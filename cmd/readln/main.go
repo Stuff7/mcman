@@ -54,17 +54,17 @@ func PushLn(prompt string, history *[]string) (string, error) {
 		}
 
 		localPos := lastHistoryIdx - hpos
-		var item string
+		var item *string
 		if localPos >= 0 && localPos < len(localHistory) {
-			item = localHistory[localPos]
+			item = &localHistory[localPos]
 		} else if hpos >= 0 && hpos < len(*history) {
-			item = (*history)[hpos]
-			localHistory = append(localHistory, item)
+			localHistory = append(localHistory, (*history)[hpos])
+			item = &localHistory[localPos]
 		} else {
-			item = newBuf
+			item = &newBuf
 		}
-		buf = &item
-		pos = len(item)
+		buf = item
+		pos = len(*item)
 	}
 
 BreakLoop:
