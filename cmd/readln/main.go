@@ -30,10 +30,7 @@ func PushLn(prompt string, history *[]string) (string, error) {
 	lastHistoryIdx := len(*history) - 1
 
 	for {
-		err := promptLn(prompt, *buf, pos)
-		if err != nil {
-			return "", err
-		}
+		promptLn(prompt, *buf, pos)
 
 		key, err := ReadCh(buf, &pos)
 		if err != nil {
@@ -81,10 +78,7 @@ func ReadLn(prompt string, buf *string) error {
 	var pos = len(*buf)
 
 	for {
-		err := promptLn(prompt, string(*buf), pos)
-		if err != nil {
-			return err
-		}
+		promptLn(prompt, string(*buf), pos)
 
 		key, err := ReadCh(buf, &pos)
 		if err != nil {
@@ -99,13 +93,12 @@ func ReadLn(prompt string, buf *string) error {
 	return nil
 }
 
-func promptLn(prompt string, input string, cursor int) error {
+func promptLn(prompt string, input string, cursor int) {
 	fmt.Printf("\x1b[2K\r%s%s\r", prompt, input)
 	cursor += len(prompt)
 	if cursor > 0 {
 		fmt.Printf("\x1b[%dC", cursor)
 	}
-	return nil
 }
 
 func ReadCh(buf *string, pos *int) (Key, error) {
@@ -113,6 +106,7 @@ func ReadCh(buf *string, pos *int) (Key, error) {
 	if err != nil {
 		return NA, err
 	}
+
 	switch key {
 	case Char:
 		if *pos == len(*buf) {
