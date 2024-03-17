@@ -1,19 +1,26 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
+	"log"
 
-	"github.com/stuff7/mcman/cmd/api"
+	"github.com/stuff7/mcman/cmd/readln"
 )
 
 func main() {
-	ret, err := api.SearchMods("quark", "1.20.1", api.Forge)
-	if err != nil {
-		fmt.Println("Error getting mod:", err)
-		return
+	var history []string
+
+	for {
+		cmd, err := readln.PushLn("> ", &history)
+		if err != nil {
+			log.Fatal("Error:", err)
+		}
+
+		fmt.Println(cmd)
+		if cmd == "q" {
+			break
+		}
 	}
 
-	s, _ := json.MarshalIndent(ret, "", "\t")
-	fmt.Println(string(s))
+	fmt.Println("Exiting...")
 }
