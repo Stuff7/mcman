@@ -21,7 +21,7 @@ const (
 	Backspace
 )
 
-func PushLn(prompt string, history *[]string) (string, error) {
+func PushLn(prompt string, history *[]string, promptHl func(input string) string) (string, error) {
 	var localHistory []string
 	var newBuf string
 	var pos int
@@ -30,7 +30,7 @@ func PushLn(prompt string, history *[]string) (string, error) {
 	lastHistoryIdx := len(*history) - 1
 
 	for {
-		promptLn(prompt, *buf, pos)
+		promptLn(prompt, promptHl(*buf), pos)
 
 		key, err := ReadCh(buf, &pos)
 		if err != nil {
@@ -94,10 +94,10 @@ func ReadLn(prompt string, buf *string) error {
 }
 
 func promptLn(prompt string, input string, cursor int) {
-	fmt.Printf("\x1b[2K\r%s%s\r", prompt, input)
+	fmt.Printf("\x1b[2K\r%s%s", prompt, input)
 	cursor += len(prompt)
 	if cursor > 0 {
-		fmt.Printf("\x1b[%dC", cursor)
+		fmt.Printf("\r\x1b[%dC", cursor)
 	}
 }
 

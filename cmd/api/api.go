@@ -84,7 +84,21 @@ const (
 	Fabric
 	Quilt
 	NeoForge
+	InvalidModLoader
 )
+
+func (ml ModLoaderType) Name() string {
+	return [...]string{
+		"Any",
+		"Forge",
+		"Cauldron",
+		"LiteLoader",
+		"Fabric",
+		"Quilt",
+		"NeoForge",
+		"InvalidModLoader",
+	}[ml]
+}
 
 type FileRelation int
 
