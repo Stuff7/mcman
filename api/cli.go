@@ -3,7 +3,6 @@ package api
 import (
 	"errors"
 	"fmt"
-	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -54,6 +53,7 @@ var cmdNames = [][]string{
 	{"set", "global"},
 	{"q", "qa"},
 }
+var cmdNamesFlat = arrFlat(cmdNames)
 
 func (c *cli) parseCmd(s string) Cmd {
 	args := strings.SplitN((s), " ", 2)
@@ -68,26 +68,12 @@ func (c *cli) parseCmd(s string) Cmd {
 				switch command(cmdName) {
 				case CmdSearch:
 					cmd.Run = c.searchCmd
+					cmd.HighlightArgs = c.searchHl
 				case CmdSet:
 					cmd.Run = c.setQueryCmd
+					cmd.HighlightArgs = c.setQueryHl
 				case CmdQuit:
 					cmd.Run = c.quitCmd
-				}
-			}
-		}
-
-		if cmd.Run == nil && len(cmd.Name) != 0 && len(cmd.Args) == 0 {
-			for _, aliases := range cmdNames {
-				var closest *string
-				if slices.ContainsFunc(aliases, func(a string) bool {
-					trimmed, found := strings.CutPrefix(a, cmd.Name)
-					if found {
-						closest = &trimmed
-					}
-					return found
-				}) {
-					cmd.Closest = closest
-					break
 				}
 			}
 		}
@@ -101,20 +87,66 @@ func (c *cli) parseCmd(s string) Cmd {
 func (c *cli) highlightInput(k readln.Key, s *string, p *int) string {
 	cmd := c.parseCmd(*s)
 
-	if cmd.Closest != nil {
+	if cmd.Run == nil {
+		closest := findClosest(cmd.Name, cmdNamesFlat)
+		if closest == nil {
+			return *s
+		}
+
 		if k == readln.Tab {
-			*s += *cmd.Closest
+			*s += *closest
 			*p = len(*s)
 			return c.highlightInput(readln.NA, s, p)
 		}
-		return fmt.Sprintf("%s%s%s%s", cmd.Name, clr(248), *cmd.Closest, RESET)
+
+		return cmd.Name + clr(248) + *closest + RESET
 	}
 
-	if cmd.Run == nil {
-		return *s
+	args := " " + clr(103) + cmd.Args
+	if cmd.HighlightArgs != nil {
+		args = cmd.HighlightArgs(k, len(cmd.Name), s, p)
 	}
 
-	return fmt.Sprintf("%s%s%s %s%s", clr(154), cmd.Name, clr(248), cmd.Args, RESET)
+	return clr(154) + cmd.Name + RESET + args + RESET
+}
+
+func findClosest(in string, aliases []string) *string {
+	if len(in) == 0 {
+		return nil
+	}
+
+	var closest *string
+	if slices.ContainsFunc(aliases, func(a string) bool {
+		trimmed, found := strings.CutPrefix(a, in)
+		if found {
+			closest = &trimmed
+		}
+		return found
+	}) {
+		return closest
+	}
+	return nil
+}
+
+func (c *cli) setQueryHl(key readln.Key, start int, in *string, pos *int) string {
+	args := (*in)[start:]
+	closest := findClosest(args[strings.LastIndex(args, " ")+1:], queryFields)
+	args = hl(args, queryFields, 14)
+	if closest == nil {
+		return args
+	}
+
+	if key == readln.Tab {
+		*in += *closest
+		*pos = len(*in)
+		return c.setQueryHl(readln.NA, start, in, pos)
+	}
+
+	return args + clr(248) + *closest
+}
+
+func (c *cli) searchHl(_ readln.Key, start int, in *string, _ *int) string {
+	return clr(214) + (*in)[start:]
 }
 
 func (c *cli) quitCmd(_ string) error {
@@ -173,10 +205,10 @@ func (c *cli) setQueryCmd(in string) error {
 }
 
 type Cmd struct {
-	Closest *string
-	Name    string
-	Args    string
-	Run     func(args string) error
+	Name          string
+	Args          string
+	Run           func(string) error
+	HighlightArgs func(readln.Key, int, *string, *int) string
 }
 
 func (c *Cmd) run() error {
@@ -184,52 +216,6 @@ func (c *Cmd) run() error {
 		return c.Run(c.Args)
 	}
 	return errors.New(fmt.Sprintf("Unknown command \"%s\"", c.Name))
-}
-
-type searchQuery struct {
-	GameVersion string        `query:"gameVersion"`
-	ModLoader   ModLoaderType `query:"modLoader"`
-}
-
-func (q searchQuery) String() string {
-	t := reflect.TypeOf(q)
-	v := reflect.ValueOf(q)
-	sep := '?'
-	var query strings.Builder
-	for i := range t.NumField() {
-		f := t.Field(i)
-		tag := f.Tag.Get("query")
-		val := v.Field(i).Interface()
-		var strVal string
-		switch val.(type) {
-		case string:
-			strVal = val.(string)
-			if strVal == "" {
-				continue
-			}
-		case ModLoaderType:
-			val := val.(ModLoaderType)
-			strVal = fmt.Sprint(val)
-		}
-		query.WriteRune(sep)
-		query.WriteString(tag)
-		query.WriteRune('=')
-		query.WriteString(strVal)
-		sep = '&'
-	}
-
-	return query.String()
-}
-
-func arrGet[T any](arr []T, idx int) *T {
-	if idx < 0 || idx >= len(arr) {
-		return nil
-	}
-	return &arr[idx]
-}
-
-func clr(id byte) string {
-	return fmt.Sprintf("\x1b[38;5;%dm", id)
 }
 
 const RESET = "\x1b[0m"
