@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -40,25 +41,57 @@ func (c *cli) Run() error {
 	return nil
 }
 
+type command int
+
+const (
+	CmdSearch command = iota
+	CmdSet
+	CmdQuit
+)
+
+var cmdNames = [][]string{
+	{"search"},
+	{"set", "global"},
+	{"q", "qa"},
+}
+
 func (c *cli) parseCmd(s string) Cmd {
-	args := strings.Split((s), " ")
+	args := strings.SplitN((s), " ", 2)
 	if cmdStr := arrGet(args, 0); cmdStr != nil {
-		var cmd Cmd
-		if len(args) < 2 {
-			args = []string{}
-		} else {
-			args = args[1:]
+		cmd := Cmd{Name: *cmdStr}
+		if len(args) > 1 {
+			cmd.Args = args[1]
 		}
-		switch *cmdStr {
-		case "search":
-			cmd.Run = c.searchCmd
-		case "set", "global":
-			cmd.Run = c.setQueryCmd
-		case "quit", "qa", "q":
-			cmd.Run = c.quitCmd
+
+		for cmdName, aliases := range cmdNames {
+			if slices.Contains(aliases, cmd.Name) {
+				switch command(cmdName) {
+				case CmdSearch:
+					cmd.Run = c.searchCmd
+				case CmdSet:
+					cmd.Run = c.setQueryCmd
+				case CmdQuit:
+					cmd.Run = c.quitCmd
+				}
+			}
 		}
-		cmd.Name = *cmdStr
-		cmd.Args = args
+
+		if len(cmd.Name) != 0 && len(cmd.Args) == 0 && cmd.Run == nil {
+			for _, aliases := range cmdNames {
+				var closest *string
+				if slices.ContainsFunc(aliases, func(a string) bool {
+					trimmed, found := strings.CutPrefix(a, cmd.Name)
+					if found {
+						closest = &trimmed
+					}
+					return found
+				}) {
+					cmd.Closest = closest
+					break
+				}
+			}
+		}
+
 		return cmd
 	}
 
@@ -67,19 +100,24 @@ func (c *cli) parseCmd(s string) Cmd {
 
 func (c *cli) highlightInput(s string) string {
 	cmd := c.parseCmd(s)
+	if cmd.Closest != nil {
+		return fmt.Sprintf("%s%s%s%s", cmd.Name, clr(248), *cmd.Closest, RESET)
+	}
+
 	if cmd.Run == nil {
 		return s
 	}
 
-	return fmt.Sprintf("%s%s%s %s%s", clr(154), cmd.Name, clr(248), strings.Join(cmd.Args, " "), RESET)
+	return fmt.Sprintf("%s%s%s %s%s", clr(154), cmd.Name, clr(248), cmd.Args, RESET)
 }
 
-func (c *cli) quitCmd(_ []string) error {
+func (c *cli) quitCmd(_ string) error {
 	c.Running = false
 	return nil
 }
 
-func (c *cli) searchCmd(args []string) error {
+func (c *cli) searchCmd(in string) error {
+	args := strings.Split(in, " ")
 	search := arrGet(args, 0)
 	if search == nil {
 		return errors.New("Missing search")
@@ -94,12 +132,13 @@ func (c *cli) searchCmd(args []string) error {
 	return nil
 }
 
-func (c *cli) setQueryCmd(args []string) error {
-	key := arrGet(args, 0)
-	if key == nil {
+func (c *cli) setQueryCmd(in string) error {
+	if len(in) == 0 {
 		fmt.Println(c.query)
 		return nil
 	}
+	args := strings.SplitN(in, " ", 2)
+	key := arrGet(args, 0)
 	val := arrGet(args, 1)
 	if val == nil {
 		return errors.New("Usage:\nglobal <key> <val>\n\tkey: \"gameVersion\" | \"modLoader\"")
@@ -128,9 +167,10 @@ func (c *cli) setQueryCmd(args []string) error {
 }
 
 type Cmd struct {
-	Name string
-	Args []string
-	Run  func(args []string) error
+	Closest *string
+	Name    string
+	Args    string
+	Run     func(args string) error
 }
 
 func (c *Cmd) run() error {
