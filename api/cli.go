@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/stuff7/mcman/cmd/readln"
+	"github.com/stuff7/mcman/readln"
 )
 
 type cli struct {
