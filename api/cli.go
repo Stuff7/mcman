@@ -76,7 +76,7 @@ func (c *cli) parseCmd(s string) Cmd {
 			}
 		}
 
-		if len(cmd.Name) != 0 && len(cmd.Args) == 0 && cmd.Run == nil {
+		if cmd.Run == nil && len(cmd.Name) != 0 && len(cmd.Args) == 0 {
 			for _, aliases := range cmdNames {
 				var closest *string
 				if slices.ContainsFunc(aliases, func(a string) bool {
@@ -98,14 +98,20 @@ func (c *cli) parseCmd(s string) Cmd {
 	return Cmd{Name: s}
 }
 
-func (c *cli) highlightInput(s string) string {
-	cmd := c.parseCmd(s)
+func (c *cli) highlightInput(k readln.Key, s *string, p *int) string {
+	cmd := c.parseCmd(*s)
+
 	if cmd.Closest != nil {
+		if k == readln.Tab {
+			*s += *cmd.Closest
+			*p = len(*s)
+			return c.highlightInput(readln.NA, s, p)
+		}
 		return fmt.Sprintf("%s%s%s%s", cmd.Name, clr(248), *cmd.Closest, RESET)
 	}
 
 	if cmd.Run == nil {
-		return s
+		return *s
 	}
 
 	return fmt.Sprintf("%s%s%s %s%s", clr(154), cmd.Name, clr(248), cmd.Args, RESET)

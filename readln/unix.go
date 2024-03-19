@@ -14,22 +14,26 @@ func readKey() (Key, byte, error) {
 	if err != nil {
 		return NA, 0, err
 	}
+
+	key := NA
 	switch ch {
 	case 8, 23:
-		return CtrlBackspace, 0, nil
+		key = CtrlBackspace
+	case 9:
+		key = Tab
 	case 10:
-		return Enter, 0, nil
+		key = Enter
 	case 27:
-		k, err := parseEscSeq()
-		return k, 0, err
+		key, err = parseEscSeq()
 	case 127:
-		return Backspace, 0, nil
+		key = Backspace
 	default:
 		if ch > 31 {
-			return Char, ch, nil
+			return Char, ch, err
 		}
-		return NA, 0, nil
 	}
+
+	return key, 0, nil
 }
 
 const ESC_SEQ_LEN = 6

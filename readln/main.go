@@ -10,6 +10,7 @@ type Key int
 const (
 	NA Key = iota
 	Char
+	Tab
 	CtrlBackspace
 	Enter
 	ArrowUp
@@ -21,7 +22,7 @@ const (
 	Backspace
 )
 
-func PushLn(prompt string, history *[]string, promptHl func(input string) string) (string, error) {
+func PushLn(prompt string, history *[]string, promptHl func(Key, *string, *int) string) (string, error) {
 	var localHistory []string
 	var newBuf string
 	var pos int
@@ -30,13 +31,13 @@ func PushLn(prompt string, history *[]string, promptHl func(input string) string
 	lastHistoryIdx := len(*history) - 1
 
 	for {
-		promptLn(prompt, promptHl(*buf), pos)
-
+		promptLn(prompt, promptHl(NA, buf, &pos), pos)
 		key, err := ReadCh(buf, &pos)
 		if err != nil {
 			return "", err
 		}
 
+		promptLn(prompt, promptHl(key, buf, &pos), pos)
 		switch key {
 		case Enter:
 			goto BreakLoop
