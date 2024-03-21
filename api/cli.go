@@ -165,7 +165,7 @@ func (c *cli) searchCmd(in string) error {
 		return err
 	}
 	for _, mod := range mods {
-		fmt.Printf("[ID: %d] %s\nDownloads: %d\n%s\n", mod.ID, mod.Name, mod.DownloadCount, mod.Summary)
+		fmt.Printf("[ID: %d] %s\nDownloads: %d\n%s\n\n", mod.ID, mod.Name, mod.DownloadCount, mod.Summary)
 	}
 	return nil
 }

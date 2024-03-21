@@ -2,6 +2,7 @@ package readln
 
 import (
 	"fmt"
+	"slices"
 	"unicode"
 )
 
@@ -102,7 +103,8 @@ func promptLn(prompt string, input string, cursor int) {
 	}
 }
 
-func ReadCh(buf *string, pos *int) (Key, error) {
+func ReadCh(s *string, pos *int) (Key, error) {
+	buf := []byte(*s)
 	key, ch, err := readKey()
 	if err != nil {
 		return NA, err
@@ -110,49 +112,50 @@ func ReadCh(buf *string, pos *int) (Key, error) {
 
 	switch key {
 	case Char:
-		if *pos == len(*buf) {
-			*buf += string(ch)
+		if *pos == len(buf) {
+			buf = append(buf, ch)
 		} else {
-			*buf = (*buf)[:*pos] + string(ch) + (*buf)[*pos:]
+			buf = slices.Insert(buf, 1, ch)
 		}
 		*pos++
 	case Backspace:
 		if *pos > 0 {
-			*buf = (*buf)[:*pos-1] + (*buf)[*pos:]
+			buf = slices.Delete(buf, *pos-1, *pos)
 			*pos--
 		}
 	case ArrowLeft:
 		*pos = max(0, *pos-1)
 	case ArrowRight:
-		*pos = min(len(*buf), *pos+1)
+		*pos = min(len(buf), *pos+1)
 	case CtrlBackspace:
 		idx := *pos
-		for idx > 0 && unicode.IsSpace(rune((*buf)[idx-1])) {
+		for idx > 0 && unicode.IsSpace(rune((buf)[idx-1])) {
 			idx--
 		}
-		for idx > 0 && !unicode.IsSpace(rune((*buf)[idx-1])) {
+		for idx > 0 && !unicode.IsSpace(rune((buf)[idx-1])) {
 			idx--
 		}
-		*buf = (*buf)[:idx] + (*buf)[*pos:]
+		buf = slices.Delete(buf, idx, *pos)
 		*pos = idx
 	case CtrlArrowLeft:
 		idx := *pos
-		for idx > 0 && unicode.IsSpace(rune((*buf)[idx-1])) {
+		for idx > 0 && unicode.IsSpace(rune((buf)[idx-1])) {
 			idx--
 		}
-		for idx > 0 && !unicode.IsSpace(rune((*buf)[idx-1])) {
+		for idx > 0 && !unicode.IsSpace(rune((buf)[idx-1])) {
 			idx--
 		}
 		*pos = idx
 	case CtrlArrowRight:
 		idx := *pos
-		for idx < len(*buf) && unicode.IsSpace(rune((*buf)[idx])) {
+		for idx < len(buf) && unicode.IsSpace(rune((buf)[idx])) {
 			idx++
 		}
-		for idx < len(*buf) && !unicode.IsSpace(rune((*buf)[idx])) {
+		for idx < len(buf) && !unicode.IsSpace(rune((buf)[idx])) {
 			idx++
 		}
 		*pos = idx
 	}
+	*s = string(buf)
 	return key, nil
 }
