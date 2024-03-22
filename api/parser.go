@@ -8,7 +8,7 @@ import (
 	"github.com/stuff7/mcman/readln"
 )
 
-type tokenType int
+type tokenType byte
 
 const (
 	Unknown tokenType = iota
@@ -17,7 +17,7 @@ const (
 	String
 	Number
 	Assign
-	Whitespace
+	Space
 )
 
 type token struct {
@@ -25,13 +25,84 @@ type token struct {
 	val string
 }
 
+func (t token) parseString() string {
+	if t.typ != String {
+		return t.val
+	}
+
+	var val strings.Builder
+	var isEsc bool
+	var i int
+	skipWhile(&i, t.val, func(b byte) bool {
+		if !isEsc {
+			switch b {
+			case '\\':
+				isEsc = true
+			case '"':
+				return false
+			default:
+				val.WriteByte(b)
+			}
+			return true
+		}
+
+		isEsc = false
+		switch b {
+		case 'b':
+			val.WriteByte('\b')
+		case 't':
+			val.WriteByte('\t')
+		case 'n':
+			val.WriteByte('\n')
+		case 'f':
+			val.WriteByte('\f')
+		case 'r':
+			val.WriteByte('\r')
+		case 'u', 'U':
+			start := i + 1
+			byteLen := 4
+			if b == 'U' {
+				byteLen = 8
+			}
+
+			i += byteLen
+			if i > len(t.val) {
+				return false
+			}
+
+			dec, err := strconv.ParseUint(t.val[start:i+1], 16, byteLen*8)
+			if err != nil {
+				return true
+			}
+
+			val.WriteRune(rune(dec))
+		default:
+			val.WriteByte(b)
+		}
+
+		return true
+	})
+
+	return val.String()
+}
+
+func (t token) parseNumber() int {
+	if t.typ != Number {
+		return 0
+	}
+	val, _ := strconv.Atoi(t.val)
+	return val
+}
+
 func TestParser(prompt string) error {
 	println("Press q to quit")
 	var history []string
+	var tokens []token
 
 	for {
 		in, err := readln.PushLn(prompt, &history, func(_ readln.Key, s *string, _ *int) string {
-			return renderCmd(tokenize(*s))
+			tokens = tokenize(*s)
+			return renderCmd(tokens)
 		})
 
 		if err != nil {
@@ -40,6 +111,9 @@ func TestParser(prompt string) error {
 
 		if in == "q" {
 			break
+		}
+		for i, t := range tokens {
+			println(i, t.parseString())
 		}
 	}
 
@@ -56,71 +130,41 @@ func tokenize(in string) []token {
 			tokens = append(tokens, token{typ: Number, val: in[skipWhile(&i, in, isDigit):i]})
 		case isAlpha(b):
 			val := in[skipWhile(&i, in, isAlphanumeric):i]
-			typ := Ident
 			if slices.Contains(cmdNamesFlat, val) {
-				typ = Command
+				tokens = append(tokens, token{typ: Command, val: val})
+			} else {
+				tokens = append(tokens, token{typ: Ident, val: val})
+
 			}
-			tokens = append(tokens, token{typ: typ, val: val})
-		case isSpace(b):
-			tokens = append(tokens, token{typ: Whitespace, val: in[skipWhile(&i, in, isSpace):i]})
+		case readln.IsSpace(b):
+			val := in[skipWhile(&i, in, readln.IsSpace):i]
+			tokens = append(tokens, token{typ: Space, val: val})
 		case b == '=':
 			start := i
 			i++
 			tokens = append(tokens, token{typ: Assign, val: in[start:i]})
 		case b == '"':
 			isEsc := false
-			var val strings.Builder
-			skipWhile(&i, in, func(b byte) bool {
+			start := skipWhile(&i, in, func(b byte) bool {
 				if !isEsc {
 					switch b {
 					case '\\':
 						isEsc = true
 					case '"':
 						return false
-					default:
-						val.WriteByte(b)
 					}
-					return true
-				}
-
-				isEsc = false
-				switch b {
-				case 'b':
-					val.WriteByte('\b')
-				case 't':
-					val.WriteByte('\t')
-				case 'n':
-					val.WriteByte('\n')
-				case 'f':
-					val.WriteByte('\f')
-				case 'r':
-					val.WriteByte('\r')
-				case 'u', 'U':
-					start := i + 1
-					byteLen := 4
-					if b == 'U' {
-						byteLen = 8
-					}
-
-					i += byteLen
-					if i > len(in) {
-						return false
-					}
-
-					dec, err := strconv.ParseUint(in[start:i+1], 16, byteLen*8)
-					if err != nil {
-						return true
-					}
-
-					val.WriteRune(rune(dec))
-				default:
-					val.WriteByte(b)
 				}
 
 				return true
 			})
-			tokens = append(tokens, token{typ: String, val: val.String()})
+
 			i++
+			end := len(in)
+			if i < end {
+				end = i
+			}
+
+			tokens = append(tokens, token{typ: String, val: in[start:end]})
 		default:
 			i++
 		}
@@ -143,7 +187,7 @@ func renderCmd(tokens []token) string {
 			b.WriteString(clr(194))
 		case Assign:
 			b.WriteString(clr(254))
-		case Whitespace:
+		case Space:
 			b.WriteString(RESET)
 		}
 		b.WriteString(t.val)
@@ -170,8 +214,4 @@ func isAlpha(b byte) bool {
 
 func isAlphanumeric(b byte) bool {
 	return isDigit(b) || isAlpha(b)
-}
-
-func isSpace(b byte) bool {
-	return b == ' ' || b == '\t' || b == '\n' || b == '\r'
 }
