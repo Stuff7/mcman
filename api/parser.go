@@ -21,8 +21,15 @@ const (
 )
 
 type token struct {
-	typ tokenType
-	val string
+	typ      tokenType
+	val      string
+	lst      int
+	keywords []string
+}
+
+func newToken(typ tokenType, in string, i *int, cond func(byte) bool) token {
+	fst := skipWhile(i, in, cond)
+	return token{typ: typ, val: in[fst:*i], lst: *i}
 }
 
 func (t token) parseString() string {
@@ -94,31 +101,37 @@ func (t token) parseNumber() int {
 	return val
 }
 
-func TestParser(prompt string) error {
-	println("Press q to quit")
-	var history []string
-	var tokens []token
-
-	for {
-		in, err := readln.PushLn(prompt, &history, func(_ readln.Key, s *string, _ *int) string {
-			tokens = tokenize(*s)
-			return renderCmd(tokens)
-		})
-
-		if err != nil {
-			return err
-		}
-
-		if in == "q" {
-			break
-		}
-		for i, t := range tokens {
-			println(i, t.parseString())
+func autocomplete(tokens []token, to tokenType, keywords []string) {
+	for i := 0; i < len(tokens); i++ {
+		t := &tokens[i]
+		if slices.Contains(keywords, t.val) {
+			t.typ = to
+		} else {
+			t.keywords = keywords
 		}
 	}
+}
 
-	println("Quit")
-	return nil
+func nextNonSpaceToken(tokens []token, i *int) *token {
+	for *i < len(tokens) && tokens[*i].typ == Space {
+		*i++
+	}
+
+	if len(tokens) == *i {
+		return nil
+	}
+	t := &tokens[*i]
+	*i++
+
+	return t
+}
+
+func joinTokens(tokens []token) string {
+	var b strings.Builder
+	for i := 0; i < len(tokens); i++ {
+		b.WriteString(tokens[i].val)
+	}
+	return b.String()
 }
 
 func tokenize(in string) []token {
@@ -127,44 +140,31 @@ func tokenize(in string) []token {
 		b := in[i]
 		switch {
 		case isDigit(b):
-			tokens = append(tokens, token{typ: Number, val: in[skipWhile(&i, in, isDigit):i]})
+			tokens = append(tokens, newToken(Number, in, &i, isDigit))
 		case isAlpha(b):
-			val := in[skipWhile(&i, in, isAlphanumeric):i]
-			if slices.Contains(cmdNamesFlat, val) {
-				tokens = append(tokens, token{typ: Command, val: val})
-			} else {
-				tokens = append(tokens, token{typ: Ident, val: val})
-
-			}
+			tokens = append(tokens, newToken(Unknown, in, &i, isAlphanumeric))
 		case readln.IsSpace(b):
-			val := in[skipWhile(&i, in, readln.IsSpace):i]
-			tokens = append(tokens, token{typ: Space, val: val})
+			tokens = append(tokens, newToken(Space, in, &i, readln.IsSpace))
 		case b == '=':
-			start := i
-			i++
-			tokens = append(tokens, token{typ: Assign, val: in[start:i]})
+			tokens = append(tokens, newToken(Assign, in, &i, func(b byte) bool { return false }))
 		case b == '"':
 			isEsc := false
-			start := skipWhile(&i, in, func(b byte) bool {
+			tokens = append(tokens, newToken(String, in, &i, func(b byte) bool {
 				if !isEsc {
 					switch b {
 					case '\\':
 						isEsc = true
 					case '"':
+						i++
+						if i >= len(in) {
+							i = len(in)
+						}
+
 						return false
 					}
 				}
-
 				return true
-			})
-
-			i++
-			end := len(in)
-			if i < end {
-				end = i
-			}
-
-			tokens = append(tokens, token{typ: String, val: in[start:end]})
+			}))
 		default:
 			i++
 		}
@@ -173,7 +173,7 @@ func tokenize(in string) []token {
 	return tokens
 }
 
-func renderCmd(tokens []token) string {
+func renderTokens(tokens []token, k readln.Key, s *string, p *int) string {
 	var b strings.Builder
 	for _, t := range tokens {
 		switch t.typ {
@@ -187,13 +187,28 @@ func renderCmd(tokens []token) string {
 			b.WriteString(clr(194))
 		case Assign:
 			b.WriteString(clr(254))
-		case Space:
+		default:
 			b.WriteString(RESET)
 		}
+
 		b.WriteString(t.val)
-		b.WriteString(RESET)
+		if t.lst == *p && t.keywords != nil {
+			closest := findClosest(t.val, t.keywords)
+			if closest == nil {
+				break
+			}
+
+			if k == readln.Tab {
+				*s += *closest
+				*p = len(*s)
+				break
+			}
+
+			b.WriteString(clr(248) + *closest + RESET)
+		}
 	}
 
+	b.WriteString(RESET)
 	return b.String()
 }
 
