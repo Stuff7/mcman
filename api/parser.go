@@ -192,14 +192,14 @@ func renderTokens(tokens []token, k readln.Key, s *string, p *int) string {
 		}
 
 		b.WriteString(t.val)
-		if t.lst == *p && t.keywords != nil {
+		if t.typ == Unknown && t.lst == *p && t.keywords != nil {
 			closest := findClosest(t.val, t.keywords)
 			if closest == nil {
 				break
 			}
 
 			if k == readln.Tab {
-				*s += *closest
+				*s = (*s)[:*p] + *closest + (*s)[*p:]
 				*p = len(*s)
 				break
 			}

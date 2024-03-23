@@ -126,15 +126,12 @@ func (c *cli) quitCmd(_ []token) error {
 
 func (c *cli) searchCmd(tokens []token) error {
 	var search string
-	if tokens[0].typ == String {
+	if len(tokens) != 0 && tokens[0].typ == String {
 		search = tokens[0].parseString()
 	} else {
 		search = joinTokens(tokens)
 	}
 
-	if len(search) == 0 {
-		return errors.New("Missing search")
-	}
 	mods, err := searchMods(search, c.query)
 	if err != nil {
 		return err
