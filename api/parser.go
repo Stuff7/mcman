@@ -200,7 +200,7 @@ func renderTokens(tokens []token, k readln.Key, s *string, p *int) string {
 
 			if k == readln.Tab {
 				*s = (*s)[:*p] + *closest + (*s)[*p:]
-				*p = len(*s)
+				*p += len(*closest)
 				break
 			}
 
