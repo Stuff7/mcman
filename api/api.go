@@ -131,6 +131,10 @@ type ModFiles struct {
 	Files       []CfFile
 }
 
+type gameVersion struct {
+	Version string `json:"versionString"`
+}
+
 type CfResponse[D any] struct {
 	Data D `json:"data"`
 }
@@ -157,4 +161,17 @@ type cfMod struct {
 	Modified      time.Time `json:"dateModified"`
 	Released      time.Time `json:"dateReleased"`
 	Files         []CfFile  `json:"latestFiles"`
+}
+
+type cfGameVersion struct {
+	ID                    int       `json:"id"`
+	GameVersionID         int       `json:"gameVersionId"`
+	VersionString         string    `json:"versionString"`
+	JarDownloadURL        string    `json:"jarDownloadUrl"`
+	JSONDownloadURL       string    `json:"jsonDownloadUrl"`
+	Approved              bool      `json:"approved"`
+	DateModified          time.Time `json:"dateModified"`
+	GameVersionTypeID     int       `json:"gameVersionTypeId"`
+	GameVersionStatus     int       `json:"gameVersionStatus"`
+	GameVersionTypeStatus int       `json:"gameVersionTypeStatus"`
 }

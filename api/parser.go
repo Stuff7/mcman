@@ -17,6 +17,7 @@ const (
 	String
 	Number
 	Assign
+	Symbol
 	Space
 )
 
@@ -104,6 +105,10 @@ func (t token) parseNumber() int {
 func autocomplete(tokens []token, to tokenType, keywords []string) {
 	for i := 0; i < len(tokens); i++ {
 		t := &tokens[i]
+		if t.typ != Unknown {
+			continue
+		}
+
 		if slices.Contains(keywords, t.val) {
 			t.typ = to
 		} else {
@@ -146,7 +151,7 @@ func tokenize(in string) []token {
 		case readln.IsSpace(b):
 			tokens = append(tokens, newToken(Space, in, &i, readln.IsSpace))
 		case b == '=':
-			tokens = append(tokens, newToken(Assign, in, &i, func(b byte) bool { return false }))
+			tokens = append(tokens, newToken(Assign, in, &i, func(byte) bool { return false }))
 		case b == '"':
 			isEsc := false
 			tokens = append(tokens, newToken(String, in, &i, func(b byte) bool {
@@ -166,7 +171,7 @@ func tokenize(in string) []token {
 				return true
 			}))
 		default:
-			i++
+			tokens = append(tokens, newToken(Symbol, in, &i, func(byte) bool { return false }))
 		}
 	}
 
@@ -185,8 +190,8 @@ func renderTokens(tokens []token, k readln.Key, s *string, p *int) string {
 			b.WriteString(clr(214))
 		case Number:
 			b.WriteString(clr(194))
-		case Assign:
-			b.WriteString(clr(254))
+		case Assign, Symbol:
+			b.WriteString(clr(213))
 		default:
 			b.WriteString(RESET)
 		}

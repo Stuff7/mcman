@@ -6,6 +6,15 @@ import (
 	"strings"
 )
 
+func getVersions() ([]gameVersion, error) {
+	var versions []gameVersion
+	if err := getJSON(&versions, "/v1/minecraft/version"); err != nil {
+		return versions, err
+	}
+
+	return versions, nil
+}
+
 func searchMods(search string, query searchQuery) ([]cfMod, error) {
 	var mods []cfMod
 	if err := getJSON(
