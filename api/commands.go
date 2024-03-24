@@ -40,12 +40,12 @@ var cmdNames = [][]string{
 }
 var cmdNamesFlat = arrFlat(cmdNames)
 
-func (c *cli) parseCmd(tokens []token) Cmd {
+func (c *cli) parseCmd(tokens []token) (Cmd, []token) {
 	var i int
 	var cmdx Cmd
 	cmd := nextNonSpaceToken(tokens, &i)
 	if cmd == nil || cmd.typ != Unknown {
-		return cmdx
+		return cmdx, tokens
 	}
 
 	if ok := nextNonSpaceToken(tokens, &i); ok != nil {
@@ -59,7 +59,10 @@ func (c *cli) parseCmd(tokens []token) Cmd {
 			case CmdSearch:
 				cmdx.Run = c.searchCmd
 			case CmdSet:
-				autocomplete(cmdx.tokens, Ident, queryFields)
+				if len(cmdx.tokens) != 0 {
+					cmdx.tokens = queryCmdKwords(cmdx.tokens)
+					tokens = slices.Concat(tokens[:i-1], cmdx.tokens)
+				}
 				cmdx.Run = c.setQueryCmd
 			case CmdHelp:
 				cmdx.Run = c.helpCmd
@@ -75,7 +78,7 @@ func (c *cli) parseCmd(tokens []token) Cmd {
 		}
 	}
 
-	return cmdx
+	return cmdx, tokens
 }
 
 func findClosest(in string, aliases []string) *string {
@@ -149,15 +152,15 @@ func (c *cli) setQueryCmd(tokens []token) error {
 
 			switch k.val {
 			case "gameVersion":
-				if v.typ != String {
+				if v.typ != Keyword {
 					return errors.New(fmt.Sprintf("Invalid value %+v", v))
 				}
-				c.query.GameVersion = v.parseString()
+				c.query.GameVersion = v.val
 			case "modLoader":
-				if v.typ != Number {
+				if v.typ != Keyword {
 					return errors.New("Invalid value")
 				}
-				c.query.ModLoader = ModLoaderType(v.parseNumber())
+				c.query.ModLoader = slices.Index(modLoaderKeywords, v.val)
 			}
 		} else {
 			return errors.New(fmt.Sprintf("Unknown query key %s", k.val))

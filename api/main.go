@@ -67,8 +67,8 @@ func hl(s string, keywords []string, color byte) string {
 }
 
 type searchQuery struct {
-	GameVersion string        `query:"gameVersion"`
-	ModLoader   ModLoaderType `query:"modLoader"`
+	GameVersion string `query:"gameVersion"`
+	ModLoader   int    `query:"modLoader"`
 }
 
 var queryFields = (searchQuery{}).getFields()
@@ -84,14 +84,13 @@ func (q searchQuery) String() string {
 		val := v.Field(i).Interface()
 		var strVal string
 
-		switch val.(type) {
+		switch val := val.(type) {
 		case string:
-			strVal = val.(string)
-			if strVal == "" {
+			if val == "" {
 				continue
 			}
-		case ModLoaderType:
-			val := val.(ModLoaderType)
+			strVal = val
+		case int:
 			strVal = fmt.Sprint(val)
 		}
 

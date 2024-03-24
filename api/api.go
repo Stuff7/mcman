@@ -74,30 +74,15 @@ func getJSON[T any](ret *T, url string) error {
 	return nil
 }
 
-type ModLoaderType int
-
-const (
-	Any ModLoaderType = iota
-	Forge
-	Cauldron
-	LiteLoader
-	Fabric
-	Quilt
-	NeoForge
-	InvalidModLoader
-)
-
-func (ml ModLoaderType) Name() string {
-	return [...]string{
-		"Any",
-		"Forge",
-		"Cauldron",
-		"LiteLoader",
-		"Fabric",
-		"Quilt",
-		"NeoForge",
-		"InvalidModLoader",
-	}[ml]
+var modLoaderKeywords = []string{
+	"Any",
+	"Forge",
+	"Cauldron",
+	"LiteLoader",
+	"Fabric",
+	"Quilt",
+	"NeoForge",
+	"InvalidModLoader",
 }
 
 type FileRelation int
@@ -126,7 +111,7 @@ type Dependency struct {
 
 type ModFiles struct {
 	ID          int
-	ModLoader   ModLoaderType
+	ModLoader   int
 	GameVersion string
 	Files       []CfFile
 }

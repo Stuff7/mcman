@@ -14,7 +14,7 @@ type cli struct {
 }
 
 func NewCli(prompt string) *cli {
-	return &cli{query: searchQuery{ModLoader: Forge}, Running: true, prompt: prompt}
+	return &cli{Running: true, prompt: prompt}
 }
 
 func (c *cli) Run() error {
@@ -26,7 +26,7 @@ func (c *cli) Run() error {
 	for c.Running {
 		_, err := readln.PushLn(c.prompt, &history, func(k readln.Key, s *string, i *int) string {
 			tokens = tokenize(*s)
-			cmd = c.parseCmd(tokens)
+			cmd, tokens = c.parseCmd(tokens)
 			return renderTokens(tokens, k, s, i)
 		})
 

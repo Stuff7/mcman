@@ -16,8 +16,8 @@ const (
 	Ident
 	String
 	Number
-	Assign
 	Symbol
+	Keyword
 	Space
 )
 
@@ -102,18 +102,70 @@ func (t token) parseNumber() int {
 	return val
 }
 
-func autocomplete(tokens []token, to tokenType, keywords []string) {
-	for i := 0; i < len(tokens); i++ {
-		t := &tokens[i]
-		if t.typ != Unknown {
-			continue
+func parseVersion(tokens []token, i int) []token {
+	j := i
+	var b strings.Builder
+	typ := Number
+	for j-i < 5 && j < len(tokens) {
+		t := &tokens[j]
+		j++
+		if t.typ != typ || (t.typ == Symbol && t.val != ".") {
+			break
 		}
 
-		if slices.Contains(keywords, t.val) {
-			t.typ = to
+		if typ == Number {
+			typ = Symbol
 		} else {
-			t.keywords = keywords
+			typ = Number
 		}
+
+		b.WriteString(t.val)
+	}
+
+	kwords := []string{"1.20.1", "1.7.10"}
+	t := token{val: b.String(), lst: tokens[j-1].lst}
+	if slices.Contains(kwords, t.val) {
+		t.typ = Keyword
+	} else {
+		t.typ = Symbol
+		t.keywords = kwords
+	}
+
+	return slices.Replace(tokens, i, j, t)
+}
+
+func queryCmdKwords(tokens []token) []token {
+	var t, prevT *token
+	var i int
+	for {
+		t = nextNonSpaceToken(tokens, &i)
+		if t == nil {
+			break
+		}
+		switch t.typ {
+		case Unknown:
+			if prevT != nil && prevT.typ == Ident && prevT.val == "modLoader" {
+				t.autocomplete(Keyword, modLoaderKeywords)
+			} else {
+				t.autocomplete(Ident, queryFields)
+			}
+		case Number:
+			if prevT.typ == Ident && prevT.val == "gameVersion" {
+				i--
+				tokens = parseVersion(tokens, i)
+			}
+		}
+		prevT = t
+	}
+
+	return tokens
+}
+
+func (t *token) autocomplete(to tokenType, keywords []string) {
+	if slices.Contains(keywords, t.val) {
+		t.typ = to
+	} else {
+		t.keywords = keywords
 	}
 }
 
@@ -150,8 +202,6 @@ func tokenize(in string) []token {
 			tokens = append(tokens, newToken(Unknown, in, &i, isAlphanumeric))
 		case readln.IsSpace(b):
 			tokens = append(tokens, newToken(Space, in, &i, readln.IsSpace))
-		case b == '=':
-			tokens = append(tokens, newToken(Assign, in, &i, func(byte) bool { return false }))
 		case b == '"':
 			isEsc := false
 			tokens = append(tokens, newToken(String, in, &i, func(b byte) bool {
@@ -190,14 +240,16 @@ func renderTokens(tokens []token, k readln.Key, s *string, p *int) string {
 			b.WriteString(clr(214))
 		case Number:
 			b.WriteString(clr(194))
-		case Assign, Symbol:
+		case Keyword:
+			b.WriteString(clr(85))
+		case Symbol:
 			b.WriteString(clr(213))
 		default:
 			b.WriteString(RESET)
 		}
 
 		b.WriteString(t.val)
-		if t.typ == Unknown && t.lst == *p && t.keywords != nil {
+		if t.lst == *p && t.keywords != nil {
 			closest := findClosest(t.val, t.keywords)
 			if closest == nil {
 				break
