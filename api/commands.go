@@ -4,7 +4,10 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
+
+	"github.com/stuff7/mcman/bitstream"
 )
 
 type Cmd struct {
@@ -99,12 +102,65 @@ func findClosest(in string, aliases []string) *string {
 	return nil
 }
 
-func (c *cli) versionCmd([]token) error {
-	versions, err := getVersions()
-	if err != nil {
-		return err
+func (c *cli) versionCmd(tokens []token) error {
+	if len(tokens) == 0 {
+		fmt.Printf("%#+v\n", c.versions)
+		return nil
 	}
-	fmt.Printf("%#+v\n", versions)
+
+	switch tokens[0].typ {
+	case Unknown:
+		if tokens[0].val != "update" {
+			return nil
+		}
+
+		versions, err := getVersions()
+		if err != nil {
+			return err
+		}
+
+		if len(versions) == len(c.versions) {
+			fmt.Printf("%sUp to date%s\n", clr(46), RESET)
+			return nil
+		}
+
+		var mapped []string
+		var bs bitstream.Bitstream
+		major := nextMajor
+		minor := 0
+		bs.WriteBits(0, 1) // Allocate 1 bitflag to indicate if there's an even number of versions
+		for i := 0; i < len(versions); i++ {
+			v := &versions[i]
+			if v.Version == memVersions[0] {
+				break
+			}
+
+			mapped = append(mapped, v.Version)
+			idx := strings.LastIndex(v.Version, ".")
+			if idx < 2 {
+				idx = len(v.Version) - 1
+			}
+
+			curr, err := strconv.Atoi(v.Version[2:idx])
+			fmt.Printf("V: %s %#+v %d\n", v.Version, v.Version[2:idx], idx)
+			if err != nil {
+				return err
+			}
+
+			if major != curr {
+				major = curr
+				bs.WriteBits(minor, 4)
+				minor = 0
+				continue
+			}
+			minor++
+		}
+		bs.SetBit((major-nextMajor)&1 == 0, 0)
+		fmt.Printf("%#+v\n", bs.String())
+		bs.SaveToDisk("versions")
+		c.versions = append(mapped, c.versions...)
+	}
+
 	return nil
 }
 

@@ -2,15 +2,19 @@ package api
 
 import (
 	"fmt"
+	"os"
+	"slices"
 
+	"github.com/stuff7/mcman/bitstream"
 	"github.com/stuff7/mcman/readln"
 )
 
 type cli struct {
-	query   searchQuery
-	Running bool
-	prompt  string
-	dbg     bool
+	query    searchQuery
+	Running  bool
+	prompt   string
+	dbg      bool
+	versions []string
 }
 
 func NewCli(prompt string) *cli {
@@ -22,6 +26,10 @@ func (c *cli) Run() error {
 	var history []string
 	var tokens []token
 	var cmd Cmd
+
+	if err := c.loadFiles(); err != nil {
+		return err
+	}
 
 	for c.Running {
 		_, err := readln.PushLn(c.prompt, &history, func(k readln.Key, s *string, i *int) string {
@@ -44,6 +52,42 @@ func (c *cli) Run() error {
 	}
 
 	println("Quit")
+	return nil
+}
+
+func (c *cli) loadFiles() error {
+	c.versions = nil
+	versions, err := os.ReadFile("versions")
+	if err != nil {
+		c.versions = memVersions
+		return nil
+	}
+
+	bs := bitstream.FromBuffer(versions)
+	var bitpos int
+	major := nextMajor
+	evenVersions, err := bs.ReadBits(&bitpos, 1)
+	if err != nil {
+		return err
+	}
+
+	for {
+		v, err := bs.ReadBits(&bitpos, 4)
+		if err != nil {
+			break
+		}
+		c.versions = append([]string{fmt.Sprintf("1.%d", major)}, c.versions...)
+		for minor := 1; minor <= v; minor++ {
+			c.versions = append([]string{fmt.Sprintf("1.%d.%d", major, minor)}, c.versions...)
+		}
+		major++
+	}
+
+	if evenVersions != 0 && (major-nextMajor)&1 != 0 {
+		c.versions = slices.Delete(c.versions, 0, 1)
+	}
+	c.versions = append(c.versions, memVersions...)
+
 	return nil
 }
 

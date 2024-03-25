@@ -1,9 +1,13 @@
 package main
 
-import "github.com/stuff7/mcman/api"
+import (
+	"fmt"
+
+	"github.com/stuff7/mcman/api"
+)
 
 func main() {
 	if err := api.NewCli("> ").Run(); err != nil {
-		println("Error:", err)
+		fmt.Printf("Error: %#+v\n", err)
 	}
 }
