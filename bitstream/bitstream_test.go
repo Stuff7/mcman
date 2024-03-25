@@ -8,7 +8,7 @@ func TestSetBit(t *testing.T) {
 	ret := bs.buf[0]
 	exp := byte(0xF7)
 	if ret != exp {
-		t.Logf("SetBit On Failed\nReturned: %08b\nExpected: %08b", ret, exp)
+		t.Logf("SetBit Off Failed\nReturned: %08b\nExpected: %08b", ret, exp)
 	}
 
 	bs.SetBit(true, 13)
