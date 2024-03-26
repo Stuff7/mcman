@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/stuff7/mcman/readln"
+	"github.com/stuff7/mcman/slc"
 )
 
 type tokenType byte
@@ -102,7 +103,7 @@ func (t token) parseNumber() int {
 	return val
 }
 
-func parseVersion(tokens []token, i int) []token {
+func (c *cli) parseVersion(tokens []token, i int) []token {
 	j := i
 	var b strings.Builder
 	typ := Number
@@ -122,19 +123,18 @@ func parseVersion(tokens []token, i int) []token {
 		b.WriteString(t.val)
 	}
 
-	kwords := []string{"1.20.1", "1.7.10"}
 	t := token{val: b.String(), lst: tokens[j-1].lst}
-	if slices.Contains(kwords, t.val) {
+	if slices.Contains(c.versions, t.val) {
 		t.typ = Keyword
 	} else {
 		t.typ = Symbol
-		t.keywords = kwords
+		t.keywords = c.versions
 	}
 
 	return slices.Replace(tokens, i, j, t)
 }
 
-func queryCmdKwords(tokens []token) []token {
+func (c *cli) queryCmdKwords(tokens []token) []token {
 	var t, prevT *token
 	var i int
 	for {
@@ -142,20 +142,35 @@ func queryCmdKwords(tokens []token) []token {
 		if t == nil {
 			break
 		}
-		switch t.typ {
-		case Unknown:
-			if prevT != nil && prevT.typ == Ident && prevT.val == "modLoader" {
+
+		if prevT != nil && prevT.typ == Ident {
+			switch prevT.val {
+			case "modLoader":
 				t.autocomplete(Keyword, modLoaderKeywords)
-			} else {
-				t.autocomplete(Ident, queryFields)
-			}
-		case Number:
-			if prevT.typ == Ident && prevT.val == "gameVersion" {
+			case "gameVersion":
 				i--
-				tokens = parseVersion(tokens, i)
+				tokens = c.parseVersion(tokens, i)
 			}
+		} else if t.typ == Unknown {
+			t.autocomplete(Ident, queryFields)
 		}
+
 		prevT = t
+	}
+
+	return tokens
+}
+
+func versionCmdKwords(tokens []token) []token {
+	var t *token
+	var i int
+
+	for {
+		t = nextNonSpaceToken(tokens, &i)
+		if t == nil || t.typ != Unknown {
+			break
+		}
+		t.autocomplete(Keyword, []string{"update"})
 	}
 
 	return tokens
@@ -223,6 +238,13 @@ func tokenize(in string) []token {
 		default:
 			tokens = append(tokens, newToken(Symbol, in, &i, func(byte) bool { return false }))
 		}
+	}
+
+	l := slc.Last(tokens)
+	if l == nil {
+		tokens = append(tokens, token{Unknown, "", 0, nil})
+	} else if l.typ == Space {
+		tokens = append(tokens, token{Unknown, "", l.lst, nil})
 	}
 
 	return tokens

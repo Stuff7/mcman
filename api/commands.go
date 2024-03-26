@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/stuff7/mcman/bitstream"
+	"github.com/stuff7/mcman/slc"
 )
 
 type Cmd struct {
@@ -22,10 +23,15 @@ func (c *Cmd) run() error {
 	return c.Run(c.tokens)
 }
 
-type command int
+type commandType int
+
+type command struct {
+	typ     commandType
+	aliases []string
+}
 
 const (
-	CmdSet command = iota
+	CmdSet commandType = iota
 	CmdSearch
 	CmdHelp
 	CmdDebug
@@ -33,15 +39,15 @@ const (
 	CmdQuit
 )
 
-var cmdNames = [][]string{
-	{"set", "global"},
-	{"search", "find", "fn"},
-	{"help", "h"},
-	{"dbg", "debug"},
-	{"versions"},
-	{"q", "qa", "quit", "exit"},
+var cmdNames = []command{
+	{CmdHelp, []string{"help", "h"}},
+	{CmdSet, []string{"set", "global"}},
+	{CmdSearch, []string{"search", "find", "fn"}},
+	{CmdDebug, []string{"dbg", "debug"}},
+	{CmdVersion, []string{"versions"}},
+	{CmdQuit, []string{"q", "qa", "quit", "exit"}},
 }
-var cmdNamesFlat = arrFlat(cmdNames)
+var cmdNamesFlat = slc.Flatten(slc.Map(cmdNames, func(c command) []string { return c.aliases }))
 
 func (c *cli) parseCmd(tokens []token) (Cmd, []token) {
 	var i int
@@ -55,26 +61,31 @@ func (c *cli) parseCmd(tokens []token) (Cmd, []token) {
 		cmdx.tokens = tokens[i-1:]
 	}
 
-	for cmdName, aliases := range cmdNames {
-		if slices.Contains(aliases, cmd.val) {
+	var parseKeywords func([]token) []token
+	for _, cmdN := range cmdNames {
+		if slices.Contains(cmdN.aliases, cmd.val) {
 			cmd.typ = Command
-			switch command(cmdName) {
+
+			switch cmdN.typ {
 			case CmdSearch:
 				cmdx.Run = c.searchCmd
 			case CmdSet:
-				if len(cmdx.tokens) != 0 {
-					cmdx.tokens = queryCmdKwords(cmdx.tokens)
-					tokens = slices.Concat(tokens[:i-1], cmdx.tokens)
-				}
+				parseKeywords = c.queryCmdKwords
 				cmdx.Run = c.setQueryCmd
 			case CmdHelp:
 				cmdx.Run = c.helpCmd
 			case CmdDebug:
 				cmdx.Run = c.debugCmd
 			case CmdVersion:
+				parseKeywords = versionCmdKwords
 				cmdx.Run = c.versionCmd
 			case CmdQuit:
 				cmdx.Run = c.quitCmd
+			}
+
+			if parseKeywords != nil && len(cmdx.tokens) != 0 {
+				cmdx.tokens = parseKeywords(cmdx.tokens)
+				tokens = slices.Concat(tokens[:i-1], cmdx.tokens)
 			}
 		} else {
 			cmd.keywords = cmdNamesFlat
@@ -86,6 +97,9 @@ func (c *cli) parseCmd(tokens []token) (Cmd, []token) {
 
 func findClosest(in string, aliases []string) *string {
 	if len(in) == 0 {
+		if a := slc.Get(aliases, 0); a != nil {
+			return a
+		}
 		return nil
 	}
 
@@ -108,12 +122,7 @@ func (c *cli) versionCmd(tokens []token) error {
 		return nil
 	}
 
-	switch tokens[0].typ {
-	case Unknown:
-		if tokens[0].val != "update" {
-			return nil
-		}
-
+	if tokens[0].typ == Keyword {
 		versions, err := getVersions()
 		if err != nil {
 			return err

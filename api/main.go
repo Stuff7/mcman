@@ -40,21 +40,6 @@ func getModFiles(id int, query searchQuery) (ModFiles, error) {
 	return ret, nil
 }
 
-func arrGet[T any](arr []T, idx int) *T {
-	if idx < 0 || idx >= len(arr) {
-		return nil
-	}
-	return &arr[idx]
-}
-
-func arrFlat[T any](arr [][]T) []T {
-	flat := []T{}
-	for _, t := range arr {
-		flat = append(flat, t...)
-	}
-	return flat
-}
-
 func clr(id byte) string {
 	return fmt.Sprintf("\x1b[38;5;%dm", id)
 }

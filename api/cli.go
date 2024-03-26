@@ -22,7 +22,7 @@ func NewCli(prompt string) *cli {
 }
 
 func (c *cli) Run() error {
-	fmt.Printf("%s\nPress q to quit\n%s\n", LOGO, HELP)
+	fmt.Printf("%s\nPress q to quit\n", LOGO)
 	var history []string
 	var tokens []token
 	var cmd Cmd
