@@ -32,6 +32,7 @@ type command struct {
 
 const (
 	CmdSet commandType = iota
+	CmdAdd
 	CmdSearch
 	CmdHelp
 	CmdDebug
@@ -41,6 +42,7 @@ const (
 
 var cmdNames = []command{
 	{CmdHelp, []string{"help", "h"}},
+	{CmdAdd, []string{"add"}},
 	{CmdSet, []string{"set", "global"}},
 	{CmdSearch, []string{"search", "find", "fn"}},
 	{CmdDebug, []string{"dbg", "debug"}},
@@ -69,6 +71,9 @@ func (c *cli) parseCmd(tokens []token) (Cmd, []token) {
 			switch cmdN.typ {
 			case CmdSearch:
 				cmdx.Run = c.searchCmd
+			case CmdAdd:
+				parseKeywords = addCmdKwords
+				cmdx.Run = c.addCmd
 			case CmdSet:
 				parseKeywords = c.queryCmdKwords
 				cmdx.Run = c.setQueryCmd
@@ -113,6 +118,59 @@ func findClosest(in string, aliases []string) *string {
 	}) {
 		return closest
 	}
+	return nil
+}
+
+func (c *cli) addCmd(tokens []token) error {
+	if len(tokens) == 0 {
+		return errors.New("Usage: add <option> [optionValue]\noptions:\n\tsearch <string>\n\tid <number>")
+	}
+
+	var prevT *token
+	var i int
+	for {
+		t := nextNonSpaceToken(tokens, &i)
+		if t == nil {
+			break
+		}
+
+		if prevT != nil && prevT.typ == Keyword {
+			switch prevT.val {
+			case "search":
+				if t.typ != String {
+					return errors.New("Invalid search value. Expected a string")
+				}
+
+				mods, err := searchMods(t.parseString(), c.query)
+				if err != nil {
+					return err
+				}
+
+				if len(mods) == 0 {
+					return errors.New("No mods found")
+				}
+
+				mod := &mods[0]
+				fmt.Printf("Found: %#+v\n", mod)
+				continue
+			case "id":
+				if t.typ != Number {
+					return errors.New("Invalid mod id value. Expected a number")
+				}
+
+				mod, err := getModFiles(t.parseNumber(), c.query)
+				if err != nil {
+					return err
+				}
+
+				fmt.Printf("Found: %#+v\n", mod)
+				continue
+			}
+		}
+
+		prevT = t
+	}
+
 	return nil
 }
 

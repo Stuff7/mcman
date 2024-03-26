@@ -134,6 +134,20 @@ func (c *cli) parseVersion(tokens []token, i int) []token {
 	return slices.Replace(tokens, i, j, t)
 }
 
+func addCmdKwords(tokens []token) []token {
+	var i int
+	for {
+		t := nextNonSpaceToken(tokens, &i)
+		if t == nil || t.typ != Unknown {
+			break
+		}
+
+		t.autocomplete(Keyword, []string{"search", "id"})
+	}
+
+	return tokens
+}
+
 func (c *cli) queryCmdKwords(tokens []token) []token {
 	var t, prevT *token
 	var i int

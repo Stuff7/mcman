@@ -43,7 +43,7 @@ func (c *cli) Run() error {
 		}
 
 		if err := cmd.run(); err != nil {
-			fmt.Printf("%s  %s%s\n", clr(220), err, RESET)
+			fmt.Printf("%s%s%s\n", clr(220), err, RESET)
 		}
 
 		if c.dbg {
