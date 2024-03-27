@@ -1,10 +1,60 @@
 package api
 
 import (
+	"errors"
 	"fmt"
 	"reflect"
+	"slices"
 	"strings"
+
+	"github.com/stuff7/mcman/slc"
 )
+
+func (c *cli) addMod(search any, isDependency bool) error {
+	var id int
+	var f *CfFile
+	switch search := search.(type) {
+	case string:
+		mods, err := searchMods(search, c.query)
+		if err != nil {
+			return err
+		}
+
+		m := slc.Get(mods, 0)
+		if m == nil {
+			return errors.New("No mods found")
+		}
+
+		id = m.ID
+		f = slc.Last(m.Files)
+	case int:
+		m, err := getModFiles(search, c.query)
+		if err != nil {
+			return err
+		}
+
+		id = m.ID
+		f = slc.Last(m.Files)
+	}
+
+	if f == nil {
+		return errors.New("No downloads found")
+	}
+
+	c.mods = appendModEntry(c.mods, id, c.query, f)
+	if isDependency {
+		fmt.Printf("%s+ Dep %s%s%s added\n", clr(51), BOLD, f.Name, RESET)
+	} else {
+		fmt.Printf("%s+ Mod %s%s%s added\n", clr(49), BOLD, f.Name, RESET)
+	}
+	for _, d := range f.Dependencies {
+		if !slices.ContainsFunc(c.mods, func(m modEntry) bool { return d.ModId == m.id }) {
+			return c.addMod(d.ModId, true)
+		}
+	}
+
+	return nil
+}
 
 func getVersions() ([]gameVersion, error) {
 	var versions []gameVersion
@@ -52,8 +102,8 @@ func hl(s string, keywords []string, color byte) string {
 }
 
 type searchQuery struct {
-	GameVersion string `query:"gameVersion"`
-	ModLoader   int    `query:"modLoader"`
+	GameVersion string `query:"gameVersion" key:"gameVersion"`
+	ModLoader   int    `query:"modLoaderType" key:"modLoader"`
 }
 
 var queryFields = (searchQuery{}).getFields()
@@ -94,7 +144,7 @@ func (s searchQuery) getFields() []string {
 	fieldNames := make([]string, structType.NumField())
 
 	for i := 0; i < structType.NumField(); i++ {
-		fieldNames[i] = structType.Field(i).Tag.Get("query")
+		fieldNames[i] = structType.Field(i).Tag.Get("key")
 	}
 
 	return fieldNames

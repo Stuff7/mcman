@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/stuff7/mcman/bitstream"
 	"github.com/stuff7/mcman/slc"
@@ -38,6 +39,7 @@ func newCommand(typ commandType, desc string, aliases ...string) command {
 const (
 	CmdSet commandType = iota
 	CmdAdd
+	CmdList
 	CmdSearch
 	CmdHelp
 	CmdDebug
@@ -48,6 +50,7 @@ const (
 var commands = []command{
 	newCommand(CmdHelp, "Print this table", "help", "h"),
 	newCommand(CmdAdd, "Add a new mod", "add"),
+	newCommand(CmdList, "List all the mods", "list", "ls"),
 	newCommand(CmdSet, "Set global query parameters", "set", "global"),
 	newCommand(CmdSearch, "Search mods", "search", "find", "fn"),
 	newCommand(CmdDebug, "Enable/Disable debug logs", "debug", "dbg"),
@@ -79,6 +82,8 @@ func (c *cli) parseCmd(tokens []token) (Cmd, []token) {
 			case CmdAdd:
 				parseKeywords = addCmdKwords
 				cmd.Run = c.addCmd
+			case CmdList:
+				cmd.Run = c.listCmd
 			case CmdSet:
 				parseKeywords = c.queryCmdKwords
 				cmd.Run = c.setQueryCmd
@@ -128,6 +133,21 @@ func findClosest(in string, aliases []string) *string {
 	return nil
 }
 
+func (c *cli) listCmd([]token) error {
+	fmt.Printf("Found %s%d%s mods\n", clr(49), len(c.mods), RESET)
+
+	var sb strings.Builder
+	for i, m := range c.mods {
+		sb.WriteString(fmt.Sprintf("\n[idx: %s%d%s] %s%s%s", clr(157), i, RESET, clr(214)+BOLD, m.name, RESET))
+		sb.WriteString(fmt.Sprintf(" (%s%s %s%s%s)\n", clr(228)+BOLD, modLoaderKeywords[m.modLoader], clr(231), m.gameVersion, RESET))
+		sb.WriteString(fmt.Sprintf("Download: %s%s%s\n", clr(123)+BOLD, m.downloadUrl, RESET))
+		sb.WriteString(fmt.Sprintf("Uploaded: %s%s%s\n", clr(219)+BOLD, m.uploaded.Format(time.RFC822), RESET))
+	}
+
+	println(sb.String())
+	return nil
+}
+
 func (c *cli) addCmd(tokens []token) error {
 	if len(tokens) == 0 {
 		return errors.New("Usage: add <option> [optionValue]\noptions:\n\tsearch <string>\n\tid <number>")
@@ -148,29 +168,18 @@ func (c *cli) addCmd(tokens []token) error {
 					return errors.New("Invalid search value. Expected a string")
 				}
 
-				mods, err := searchMods(t.parseString(), c.query)
-				if err != nil {
+				if err := c.addMod(t.parseString(), false); err != nil {
 					return err
 				}
-
-				if len(mods) == 0 {
-					return errors.New("No mods found")
-				}
-
-				mod := &mods[0]
-				fmt.Printf("Found: %#+v\n", mod)
 				continue
 			case "id":
 				if t.typ != Number {
 					return errors.New("Invalid mod id value. Expected a number")
 				}
 
-				mod, err := getModFiles(t.parseNumber(), c.query)
-				if err != nil {
+				if err := c.addMod(t.parseNumber(), false); err != nil {
 					return err
 				}
-
-				fmt.Printf("Found: %#+v\n", mod)
 				continue
 			}
 		}

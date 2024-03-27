@@ -15,6 +15,7 @@ type cli struct {
 	prompt   string
 	dbg      bool
 	versions []string
+	mods     []modEntry
 }
 
 func NewCli(prompt string) *cli {
@@ -92,6 +93,7 @@ func (c *cli) loadFiles() error {
 }
 
 const RESET = "\x1b[0m"
+const BOLD = "\x1b[1m"
 
 const LOGO = `
  ███▄ ▄███▓ ▄████▄   ███▄ ▄███▓ ▄▄▄       ███▄    █ 

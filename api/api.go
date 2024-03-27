@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"os"
+	"slices"
 	"time"
 )
 
@@ -193,6 +194,29 @@ type Dependency struct {
 	Relation FileRelation `json:"relationType"`
 }
 
+type modEntry struct {
+	id          int
+	modLoader   int
+	gameVersion string
+	name        string
+	downloadUrl string
+	uploaded    time.Time
+}
+
+func appendModEntry(mods []modEntry, id int, query searchQuery, f *CfFile) []modEntry {
+	if !slices.ContainsFunc(mods, func(m modEntry) bool { return id == m.id }) {
+		return append(mods, modEntry{
+			id:          id,
+			modLoader:   query.ModLoader,
+			gameVersion: query.GameVersion,
+			name:        f.Name,
+			downloadUrl: f.DownloadURL,
+			uploaded:    f.Uploaded,
+		})
+	}
+	return mods
+}
+
 type ModFiles struct {
 	ID          int
 	ModLoader   int
@@ -212,7 +236,7 @@ type CfFile struct {
 	Uploaded          time.Time    `json:"fileDate"`
 	ID                int          `json:"id"`
 	Name              string       `json:"fileName"`
-	Size              int          `json:"fileSizeOnDisk"`
+	Size              int          `json:"fileLength"`
 	DownloadURL       string       `json:"downloadUrl"`
 	SupportedVersions []string     `json:"gameVersions"`
 	Dependencies      []Dependency `json:"dependencies"`
