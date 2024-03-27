@@ -105,12 +105,3 @@ const LOGO = `
        ░   ░ ░             ░         ░  ░         ░ 
            ░                                        
 `
-
-const HELP = `
-| Command           | Description       |
-|-------------------|-------------------|
-| help              | Print this table  |
-| search <string>   | Search mods       |
-| set <key> <value> | Sets global query |
-| quit              | Quit              |
-`

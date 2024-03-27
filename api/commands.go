@@ -26,8 +26,13 @@ func (c *Cmd) run() error {
 type commandType int
 
 type command struct {
-	typ     commandType
-	aliases []string
+	typ         commandType
+	aliases     []string
+	description string
+}
+
+func newCommand(typ commandType, desc string, aliases ...string) command {
+	return command{typ, aliases, desc}
 }
 
 const (
@@ -40,64 +45,66 @@ const (
 	CmdQuit
 )
 
-var cmdNames = []command{
-	{CmdHelp, []string{"help", "h"}},
-	{CmdAdd, []string{"add"}},
-	{CmdSet, []string{"set", "global"}},
-	{CmdSearch, []string{"search", "find", "fn"}},
-	{CmdDebug, []string{"dbg", "debug"}},
-	{CmdVersion, []string{"versions"}},
-	{CmdQuit, []string{"q", "qa", "quit", "exit"}},
+var commands = []command{
+	newCommand(CmdHelp, "Print this table", "help", "h"),
+	newCommand(CmdAdd, "Add a new mod", "add"),
+	newCommand(CmdSet, "Set global query parameters", "set", "global"),
+	newCommand(CmdSearch, "Search mods", "search", "find", "fn"),
+	newCommand(CmdDebug, "Enable/Disable debug logs", "debug", "dbg"),
+	newCommand(CmdVersion, "Update saved versions", "versions"),
+	newCommand(CmdQuit, "Quit", "quit", "qa", "q", "exit"),
 }
-var cmdNamesFlat = slc.Flatten(slc.Map(cmdNames, func(c command) []string { return c.aliases }))
+var cmdNames = slc.Flatten(slc.Map(commands, func(c command) []string { return c.aliases }))
 
 func (c *cli) parseCmd(tokens []token) (Cmd, []token) {
 	var i int
-	var cmdx Cmd
-	cmd := nextNonSpaceToken(tokens, &i)
-	if cmd == nil || cmd.typ != Unknown {
-		return cmdx, tokens
+	var cmd Cmd
+	t := nextNonSpaceToken(tokens, &i)
+	if t == nil || t.typ != Unknown {
+		return cmd, tokens
 	}
 
 	if ok := nextNonSpaceToken(tokens, &i); ok != nil {
-		cmdx.tokens = tokens[i-1:]
+		cmd.tokens = tokens[i-1:]
 	}
 
 	var parseKeywords func([]token) []token
-	for _, cmdN := range cmdNames {
-		if slices.Contains(cmdN.aliases, cmd.val) {
-			cmd.typ = Command
+	for _, cmdN := range commands {
+		if slices.Contains(cmdN.aliases, t.val) {
+			t.typ = Command
 
 			switch cmdN.typ {
 			case CmdSearch:
-				cmdx.Run = c.searchCmd
+				cmd.Run = c.searchCmd
 			case CmdAdd:
 				parseKeywords = addCmdKwords
-				cmdx.Run = c.addCmd
+				cmd.Run = c.addCmd
 			case CmdSet:
 				parseKeywords = c.queryCmdKwords
-				cmdx.Run = c.setQueryCmd
+				cmd.Run = c.setQueryCmd
 			case CmdHelp:
-				cmdx.Run = c.helpCmd
+				cmd.Run = c.helpCmd
 			case CmdDebug:
-				cmdx.Run = c.debugCmd
+				cmd.Run = c.debugCmd
 			case CmdVersion:
 				parseKeywords = versionCmdKwords
-				cmdx.Run = c.versionCmd
+				cmd.Run = c.versionCmd
 			case CmdQuit:
-				cmdx.Run = c.quitCmd
+				cmd.Run = c.quitCmd
 			}
 
-			if parseKeywords != nil && len(cmdx.tokens) != 0 {
-				cmdx.tokens = parseKeywords(cmdx.tokens)
-				tokens = slices.Concat(tokens[:i-1], cmdx.tokens)
+			if parseKeywords != nil && len(cmd.tokens) != 0 {
+				cmd.tokens = parseKeywords(cmd.tokens)
+				tokens = slices.Concat(tokens[:i-1], cmd.tokens)
 			}
-		} else {
-			cmd.keywords = cmdNamesFlat
 		}
 	}
 
-	return cmdx, tokens
+	if t.typ != Command && cmd.Run == nil {
+		t.keywords = cmdNames
+	}
+
+	return cmd, tokens
 }
 
 func findClosest(in string, aliases []string) *string {
@@ -231,12 +238,42 @@ func (c *cli) versionCmd(tokens []token) error {
 	return nil
 }
 
-func (c *cli) helpCmd(_ []token) error {
-	println(HELP)
-	return nil
+var helpTable string
+
+func (c *cli) helpCmd(tokens []token) error {
+	if len(helpTable) != 0 {
+		println(helpTable)
+		return nil
+	}
+
+	rows := make([][3]string, len(commands)+2)
+	rows[0] = [3]string{"Command", "Description", " "}
+	rows[1][2] = "-"
+	maxLn := []int{len(rows[0][0]), len(rows[0][1])}
+	for j, cmd := range commands {
+		rows[j+2] = [3]string{cmd.aliases[0], cmd.description, " "}
+		for i, n := range rows[j+2][:2] {
+			l := &maxLn[i]
+			if n := len(n); n > *l {
+				*l = n
+			}
+		}
+	}
+
+	var sb strings.Builder
+	for _, row := range rows {
+		for i, s := range row[:2] {
+			l := &maxLn[i]
+			sb.WriteString(fmt.Sprintf("|%s%s%s", row[2], s, strings.Repeat(row[2], *l-len(s)+1)))
+		}
+		sb.WriteString("|\n")
+	}
+
+	helpTable = sb.String()
+	return c.helpCmd(tokens)
 }
 
-func (c *cli) quitCmd(_ []token) error {
+func (c *cli) quitCmd([]token) error {
 	c.Running = false
 	return nil
 }
