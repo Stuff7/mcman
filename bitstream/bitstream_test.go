@@ -1,6 +1,8 @@
 package bitstream
 
-import "testing"
+import (
+	"testing"
+)
 
 func TestSetBit(t *testing.T) {
 	bs := FromBuffer([]byte{0xFF, 0x00})

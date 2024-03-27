@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"slices"
+	"strconv"
+	"strings"
 
 	"github.com/stuff7/mcman/bitstream"
 	"github.com/stuff7/mcman/readln"
@@ -90,6 +92,47 @@ func (c *cli) loadFiles() error {
 	c.versions = append(c.versions, memVersions...)
 
 	return nil
+}
+
+func (c *cli) saveMods() error {
+	var bs bitstream.Bitstream
+	for _, m := range c.mods {
+		bs.WriteBits(m.id, 24)
+		bs.WriteBits(m.modLoader, 4)
+
+		idx := strings.Index(m.gameVersion[2:], ".")
+		if idx < 0 {
+			idx = len(m.gameVersion)
+		} else {
+			idx += 2
+		}
+
+		major, err := strconv.Atoi(m.gameVersion[2:idx])
+		if err != nil {
+			return err
+		}
+		bs.WriteBits(major, 5)
+
+		minor, err := strconv.Atoi(m.gameVersion[idx:])
+		if err != nil {
+			bs.WriteBits(0, 4)
+		} else {
+			bs.WriteBits(minor, 4)
+		}
+
+		if err := bs.WritePascalString(m.name); err != nil {
+			return err
+		}
+
+		if err := bs.WritePascalString(m.downloadUrl); err != nil {
+			return err
+		}
+
+		bs.WriteBits64(m.uploaded.Unix(), 64)
+	}
+
+	println(bs.String())
+	return bs.SaveToDisk("modlist")
 }
 
 const RESET = "\x1b[0m"

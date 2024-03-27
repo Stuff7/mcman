@@ -35,9 +35,26 @@ func (bs *Bitstream) SetBit(state bool, pos int) error {
 	return nil
 }
 
-func (bs *Bitstream) WriteBits(t int, bits int) {
+func (bs *Bitstream) WritePascalString(s string) error {
+	if bs.b != 0 {
+		bs.b = 0
+		bs.i++
+	}
+	b := bs.currentByte()
+	sLen := len(s)
+	if sLen > 0xFF {
+		return errors.New(fmt.Sprintf("String is too long cannot write as Pascal: %#+v", s))
+	}
+
+	*b = byte(sLen)
+	bs.buf = append(bs.buf, s...)
+	bs.i = len(bs.buf)
+
+	return nil
+}
+
+func WriteBits[T int | int64](bs *Bitstream, t T, bits int) {
 	for bits > 0 {
-		t &= 0xFF_FF_FF_FF >> (32 - bits)
 		b := bs.currentByte()
 		size := min(bits, 8-bs.b)
 		mask := byte(int(t)>>max(bits-size, 0)) << (8 - bs.b - size)
@@ -50,8 +67,16 @@ func (bs *Bitstream) WriteBits(t int, bits int) {
 	}
 }
 
-func (bs *Bitstream) ReadBits(bitpos *int, bits int) (int, error) {
-	var t int
+func (bs *Bitstream) WriteBits(t int, bits int) {
+	WriteBits(bs, t, bits)
+}
+
+func (bs *Bitstream) WriteBits64(t int64, bits int) {
+	WriteBits(bs, t, bits)
+}
+
+func ReadBits[T int | int64](bs *Bitstream, bitpos *int, bits int) (T, error) {
+	var t T
 	var readSize int
 	for ; bits > 0; t <<= bits {
 		currBPos := *bitpos % 8
@@ -63,13 +88,21 @@ func (bs *Bitstream) ReadBits(bitpos *int, bits int) (int, error) {
 		b := bs.buf[i]
 		readSize = min(8-currBPos, bits)
 		m := turnOffRight(turnOffLeft(0xFF, byte(currBPos)), byte(8-readSize-currBPos))
-		t |= int(b&m) >> (8 - readSize - currBPos)
+		t |= T(b&m) >> (8 - readSize - currBPos)
 
 		*bitpos += readSize
 		bits -= readSize
 	}
 
 	return t, nil
+}
+
+func (bs *Bitstream) ReadBits(bitpos *int, bits int) (int, error) {
+	return ReadBits[int](bs, bitpos, bits)
+}
+
+func (bs *Bitstream) ReadBits64(bitpos *int, bits int) (int64, error) {
+	return ReadBits[int64](bs, bitpos, bits)
 }
 
 func turnOffLeft(n byte, c byte) byte {

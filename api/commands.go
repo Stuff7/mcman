@@ -284,7 +284,7 @@ func (c *cli) helpCmd(tokens []token) error {
 
 func (c *cli) quitCmd([]token) error {
 	c.Running = false
-	return nil
+	return c.saveMods()
 }
 
 func (c *cli) searchCmd(tokens []token) error {
