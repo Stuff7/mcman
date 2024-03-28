@@ -167,7 +167,6 @@ var modLoaderKeywords = []string{
 	"Fabric",
 	"Quilt",
 	"NeoForge",
-	"InvalidModLoader",
 }
 
 type FileRelation int

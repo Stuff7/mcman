@@ -108,6 +108,31 @@ func (bs *Bitstream) ReadBits64(bitpos *int, bits int) (int64, error) {
 	return ReadBits[int64](bs, bitpos, bits)
 }
 
+func (bs *Bitstream) ReadPascalString(bitpos *int) (string, error) {
+	bp := *bitpos % 8
+	i := *bitpos >> 3
+	if bp != 0 {
+		*bitpos += 8 - bp
+		bp = 0
+		i++
+	}
+
+	if i >= len(bs.buf) {
+		return "", errors.New("Tried to read pascal string out of bounds")
+	}
+
+	sLen := bs.buf[i]
+	i++
+	if i+int(sLen) > len(bs.buf) {
+		return "", errors.New("Pascal string is too long")
+	}
+
+	s := string(bs.buf[i : i+int(sLen)])
+	*bitpos += int(sLen)*8 + 8
+
+	return s, nil
+}
+
 func turnOffLeft(n byte, c byte) byte {
 	return n & ((byte(0xFF) << c) >> c)
 }

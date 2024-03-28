@@ -56,17 +56,35 @@ func TestVariableLen(t *testing.T) {
 		nums = append(nums, i)
 		bs.WriteBits(i, i)
 	}
-
 	lightningDate := time.Date(1955, time.November, 12, 22, 4, 0, 0, time.UTC)
 	expDate := lightningDate.Unix()
 	bs.WriteBits64(expDate, 64)
+	expStr := "November 12, 1955, also marks the exact time when lightning strikes the Hill Valley clock tower, at exactly 10:04 p.m"
+	bs.WritePascalString(expStr)
+	bs.WriteBits(5, 3)
+
 	bsexp := "11001101 00001010 00110000 01110000 10000000 01001000 00010100 00000010 " +
-		"11000000 00110000 00000001 10100000 00000111 00000000 00001111 " +
-		"11111111 11111111 11111111 11111111 11100101 01101001 00110100 01010000"
+		"11000000 00110000 00000001 10100000 00000111 00000000 00001111 11111111 " +
+		"11111111 11111111 11111111 11100101 01101001 00110100 01010000 01110101 " +
+		"01001110 01101111 01110110 01100101 01101101 01100010 01100101 01110010 " +
+		"00100000 00110001 00110010 00101100 00100000 00110001 00111001 00110101 " +
+		"00110101 00101100 00100000 01100001 01101100 01110011 01101111 00100000 " +
+		"01101101 01100001 01110010 01101011 01110011 00100000 01110100 01101000 " +
+		"01100101 00100000 01100101 01111000 01100001 01100011 01110100 00100000 " +
+		"01110100 01101001 01101101 01100101 00100000 01110111 01101000 01100101 " +
+		"01101110 00100000 01101100 01101001 01100111 01101000 01110100 01101110 " +
+		"01101001 01101110 01100111 00100000 01110011 01110100 01110010 01101001 " +
+		"01101011 01100101 01110011 00100000 01110100 01101000 01100101 00100000 " +
+		"01001000 01101001 01101100 01101100 00100000 01010110 01100001 01101100 " +
+		"01101100 01100101 01111001 00100000 01100011 01101100 01101111 01100011 " +
+		"01101011 00100000 01110100 01101111 01110111 01100101 01110010 00101100 " +
+		"00100000 01100001 01110100 00100000 01100101 01111000 01100001 01100011 " +
+		"01110100 01101100 01111001 00100000 00110001 00110000 00111010 00110000 " +
+		"00110100 00100000 01110000 00101110 01101101 10100000"
 	bsret := bs.String()
 
-	if bsret != bsexp {
-		t.Errorf("Write Failed\nReturned: %#+v\nExpected: %#+v", bsret, bsexp)
+	if bsexp != bsret {
+		t.Errorf("Write Failed\nReturned: %#+v\nExpected: %#+v", bs.String(), bsexp)
 	}
 
 	var b int
@@ -88,11 +106,23 @@ func TestVariableLen(t *testing.T) {
 	}
 
 	if retDate := time.Unix(ret, 0).UTC(); retDate != lightningDate {
-		t.Log("November 12, 1955, also marks the exact time when lightning strikes the Hill Valley clock tower, at exactly 10:04 p.m")
 		t.Errorf(
 			"Wrong lightning date\nReturned: %s (%d)\t%08b\nExpected: %s (%d)\t%08b",
 			retDate.Format(time.RFC822), ret, ret,
 			lightningDate.Format(time.RFC822), expDate, expDate,
 		)
+	}
+
+	retStr, err := bs.ReadPascalString(&b)
+	if err != nil {
+		t.Errorf("ReadPascalString Error\nerr:%s", err)
+	}
+
+	if retStr != expStr {
+		t.Errorf("ReadPascalString Failed\nReturned: %#+v\nExpected: %#+v", retStr, expStr)
+	}
+
+	if n, err := bs.ReadBits(&b, 3); err != nil || n != 5 {
+		t.Errorf("Failed to read bits after pascal string\nReturned: %d\nExpected: 5\nerr: %s", n, err)
 	}
 }

@@ -138,8 +138,8 @@ func (c *cli) listCmd([]token) error {
 
 	var sb strings.Builder
 	for i, m := range c.mods {
-		sb.WriteString(fmt.Sprintf("\n[idx: %s%d%s] %s%s%s", clr(157), i, RESET, clr(214)+BOLD, m.name, RESET))
-		sb.WriteString(fmt.Sprintf(" (%s%s %s%s%s)\n", clr(228)+BOLD, modLoaderKeywords[m.modLoader], clr(231), m.gameVersion, RESET))
+		sb.WriteString(fmt.Sprintf("\n%s%03d%s %s%s%s # %s%d%s", clr(157)+BOLD, i, RESET, clr(214)+BOLD, m.name, RESET, clr(157), m.id, RESET))
+		sb.WriteString(fmt.Sprintf(" [%s%s %s%s%s]\n", clr(228)+BOLD, modLoaderKeywords[m.modLoader], clr(231), m.gameVersion, RESET))
 		sb.WriteString(fmt.Sprintf("Download: %s%s%s\n", clr(123)+BOLD, m.downloadUrl, RESET))
 		sb.WriteString(fmt.Sprintf("Uploaded: %s%s%s\n", clr(219)+BOLD, m.uploaded.Format(time.RFC822), RESET))
 	}
@@ -192,7 +192,15 @@ func (c *cli) addCmd(tokens []token) error {
 
 func (c *cli) versionCmd(tokens []token) error {
 	if len(tokens) == 0 {
-		fmt.Printf("%#+v\n", c.versions)
+		fmt.Printf(
+			"Found %s%d%s versions locally (Run %sversion update%s to update)\n%s\n",
+			clr(157),
+			len(c.versions),
+			RESET,
+			BOLD,
+			RESET,
+			strings.Join(c.versions, " | "),
+		)
 		return nil
 	}
 
