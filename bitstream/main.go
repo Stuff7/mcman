@@ -76,25 +76,28 @@ func (bs *Bitstream) WriteBits64(t int64, bits int) {
 }
 
 func ReadBits[T int | int64](bs *Bitstream, bitpos *int, bits int) (T, error) {
-	var t T
+	var t uint64
 	var readSize int
-	for ; bits > 0; t <<= bits {
+	for bits > 0 {
 		currBPos := *bitpos % 8
 		i := *bitpos >> 3
 		if i > len(bs.buf) || (i == len(bs.buf) && *bitpos >= bs.b) {
-			return t, errors.New("EOF")
+			return T(t), errors.New("EOF")
 		}
 
 		b := bs.buf[i]
 		readSize = min(8-currBPos, bits)
+		if bits > 0 {
+			t <<= uint64(readSize)
+		}
 		m := turnOffRight(turnOffLeft(0xFF, byte(currBPos)), byte(8-readSize-currBPos))
-		t |= T(b&m) >> (8 - readSize - currBPos)
+		t |= uint64(b&m) >> (8 - readSize - currBPos)
 
 		*bitpos += readSize
 		bits -= readSize
 	}
 
-	return t, nil
+	return T(t), nil
 }
 
 func (bs *Bitstream) ReadBits(bitpos *int, bits int) (int, error) {

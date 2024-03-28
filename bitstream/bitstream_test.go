@@ -2,6 +2,7 @@ package bitstream
 
 import (
 	"testing"
+	"time"
 )
 
 func TestSetBit(t *testing.T) {
@@ -42,7 +43,7 @@ func TestConstLen(t *testing.T) {
 			t.Errorf("Read Error\nerr: %s", err)
 		}
 		if n != nums[i] {
-			t.Errorf("Read failed\nnums[%d]\nReturned: %d\nExpected: %d", i, n, nums[i])
+			t.Errorf("Read failed\nnums[%d]\nReturned: %d\t%08b\nExpected: %d\t%08b", i, n, n, nums[i], nums[i])
 		}
 	}
 }
@@ -55,8 +56,15 @@ func TestVariableLen(t *testing.T) {
 		nums = append(nums, i)
 		bs.WriteBits(i, i)
 	}
-	bsexp := "11001101 00001010 00110000 01110000 10000000 01001000 00010100 00000010 11000000 00110000 00000001 10100000 00000111 00000000 00001111"
+
+	lightningDate := time.Date(1955, time.November, 12, 22, 4, 0, 0, time.UTC)
+	expDate := lightningDate.Unix()
+	bs.WriteBits64(expDate, 64)
+	bsexp := "11001101 00001010 00110000 01110000 10000000 01001000 00010100 00000010 " +
+		"11000000 00110000 00000001 10100000 00000111 00000000 00001111 " +
+		"11111111 11111111 11111111 11111111 11100101 01101001 00110100 01010000"
 	bsret := bs.String()
+
 	if bsret != bsexp {
 		t.Errorf("Write Failed\nReturned: %#+v\nExpected: %#+v", bsret, bsexp)
 	}
@@ -64,11 +72,27 @@ func TestVariableLen(t *testing.T) {
 	var b int
 	for i := 0; i < len(nums); i++ {
 		n, err := bs.ReadBits(&b, i+1)
+
 		if err != nil {
 			t.Errorf("Read Error\nerr:%s", err)
 		}
+
 		if n != nums[i] {
-			t.Errorf("Read failed\nnums[%d]\nReturned: %d\nExpected: %d", i, n, nums[i])
+			t.Errorf("Read failed\nnums[%d]\nReturned: %d\t%08b\nExpected: %d\t%08b", i, n, n, nums[i], nums[i])
 		}
+	}
+
+	ret, err := bs.ReadBits64(&b, 64)
+	if err != nil {
+		t.Errorf("ReadBits64 Error\nerr:%s", err)
+	}
+
+	if retDate := time.Unix(ret, 0).UTC(); retDate != lightningDate {
+		t.Log("November 12, 1955, also marks the exact time when lightning strikes the Hill Valley clock tower, at exactly 10:04 p.m")
+		t.Errorf(
+			"Wrong lightning date\nReturned: %s (%d)\t%08b\nExpected: %s (%d)\t%08b",
+			retDate.Format(time.RFC822), ret, ret,
+			lightningDate.Format(time.RFC822), expDate, expDate,
+		)
 	}
 }
