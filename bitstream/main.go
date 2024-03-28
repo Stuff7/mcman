@@ -17,6 +17,10 @@ func FromBuffer(buf []byte) *Bitstream {
 	return &Bitstream{buf: buf, b: len(buf) % 8, i: len(buf) >> 3}
 }
 
+func (bs *Bitstream) BitPosition() int {
+	return bs.b
+}
+
 func (bs *Bitstream) SetBit(state bool, pos int) error {
 	b := byte(pos % 8)
 	i := pos >> 3

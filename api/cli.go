@@ -60,9 +60,109 @@ func (c *cli) Run() error {
 	return nil
 }
 
+func saveQuery(bs *bitstream.Bitstream, modLoader int, gameVersion string) error {
+	bs.WriteBits(modLoader, 3)
+
+	if len(gameVersion) < 2 {
+		return errors.New(fmt.Sprintf("Invalid game version string %#+v", gameVersion))
+	}
+
+	idx := strings.Index(gameVersion[2:], ".")
+	if idx < 0 {
+		idx = len(gameVersion)
+	} else {
+		idx += 2
+	}
+
+	major, err := strconv.Atoi(gameVersion[2:idx])
+	if err != nil {
+		return err
+	}
+	bs.WriteBits(major, 5)
+
+	minor, err := strconv.Atoi(gameVersion[idx+1:])
+	if err != nil {
+		bs.WriteBits(0, 4)
+	} else {
+		bs.WriteBits(minor, 4)
+	}
+
+	return nil
+}
+
+func readQuery(bs *bitstream.Bitstream, b *int, modLoader *int, gameVersion *string) error {
+	var err error
+	*modLoader, err = bs.ReadBits(b, 3)
+	if err != nil {
+		return err
+	}
+
+	major, err := bs.ReadBits(b, 5)
+	if err != nil {
+		return err
+	}
+
+	minor, err := bs.ReadBits(b, 4)
+	if err != nil {
+		return err
+	}
+
+	if minor == 0 {
+		*gameVersion = fmt.Sprintf("1.%d", major)
+	} else {
+		*gameVersion = fmt.Sprintf("1.%d.%d", major, minor)
+	}
+
+	return nil
+}
+
+func (c *cli) saveCfg() error {
+	var bs bitstream.Bitstream
+
+	if err := saveQuery(&bs, c.query.ModLoader, c.query.GameVersion); err != nil {
+		return err
+	}
+
+	major := nextMajor
+	minor := 0
+	bs.WriteBits(0, 1) // Allocate 1 bitflag to indicate if there's an even number of versions
+	evenVersionsPos := bs.BitPosition()
+	for _, v := range c.versions {
+		idx := strings.LastIndex(v, ".")
+		if idx < 2 {
+			idx = len(v)
+		}
+
+		curr, err := strconv.Atoi(v[2:idx])
+		if err != nil {
+			return err
+		}
+
+		if major != curr {
+			major = curr
+			bs.WriteBits(minor-1, 4)
+			minor = 0
+		} else {
+			minor++
+		}
+
+		if v == memVersions[0] {
+			break
+		}
+	}
+	bs.SetBit((major-nextMajor)&1 == 0, evenVersionsPos)
+	bs.SaveToDisk("cfg")
+
+	return nil
+}
+
 func (c *cli) loadFiles() error {
 	c.versions = nil
-	versions, err := os.ReadFile("versions")
+	c.query.GameVersion = memVersions[0]
+	if err := c.readMods(); err != nil {
+		return err
+	}
+	versions, err := os.ReadFile("cfg")
 	if err != nil {
 		c.versions = memVersions
 		return nil
@@ -70,6 +170,11 @@ func (c *cli) loadFiles() error {
 
 	bs := bitstream.FromBuffer(versions)
 	var bitpos int
+
+	if err := readQuery(bs, &bitpos, &c.query.ModLoader, &c.query.GameVersion); err != nil {
+		return err
+	}
+
 	major := nextMajor
 	evenVersions, err := bs.ReadBits(&bitpos, 1)
 	if err != nil {
@@ -93,7 +198,7 @@ func (c *cli) loadFiles() error {
 	}
 	c.versions = append(c.versions, memVersions...)
 
-	return c.readMods()
+	return nil
 }
 
 func (c *cli) readMods() error {
@@ -115,24 +220,8 @@ func (c *cli) readMods() error {
 			break
 		}
 
-		m.modLoader, err = bs.ReadBits(&b, 3)
-		if err != nil {
+		if err := readQuery(bs, &b, &m.modLoader, &m.gameVersion); err != nil {
 			return err
-		}
-
-		major, err := bs.ReadBits(&b, 5)
-		if err != nil {
-			return err
-		}
-
-		minor, err := bs.ReadBits(&b, 4)
-		if err != nil {
-			return err
-		}
-
-		m.gameVersion = fmt.Sprintf("1.%d", major)
-		if minor != 0 {
-			m.gameVersion = fmt.Sprintf("%s.%d", m.gameVersion, minor)
 		}
 
 		m.name, err = bs.ReadPascalString(&b)
@@ -161,26 +250,8 @@ func (c *cli) saveMods() error {
 	var bs bitstream.Bitstream
 	for _, m := range c.mods {
 		bs.WriteBits(m.id, 24)
-		bs.WriteBits(m.modLoader, 3)
-
-		idx := strings.Index(m.gameVersion[2:], ".")
-		if idx < 0 {
-			idx = len(m.gameVersion)
-		} else {
-			idx += 2
-		}
-
-		major, err := strconv.Atoi(m.gameVersion[2:idx])
-		if err != nil {
+		if err := saveQuery(&bs, m.modLoader, m.gameVersion); err != nil {
 			return err
-		}
-		bs.WriteBits(major, 5)
-
-		minor, err := strconv.Atoi(m.gameVersion[idx+1:])
-		if err != nil {
-			bs.WriteBits(0, 4)
-		} else {
-			bs.WriteBits(minor, 4)
 		}
 
 		if err := bs.WritePascalString(m.name); err != nil {

@@ -4,11 +4,9 @@ import (
 	"errors"
 	"fmt"
 	"slices"
-	"strconv"
 	"strings"
 	"time"
 
-	"github.com/stuff7/mcman/bitstream"
 	"github.com/stuff7/mcman/slc"
 )
 
@@ -215,41 +213,19 @@ func (c *cli) versionCmd(tokens []token) error {
 			return nil
 		}
 
-		var mapped []string
-		var bs bitstream.Bitstream
-		major := nextMajor
-		minor := 0
-		bs.WriteBits(0, 1) // Allocate 1 bitflag to indicate if there's an even number of versions
-		for i := 0; i < len(versions); i++ {
-			v := &versions[i]
+		var newVersions []string
+		for _, v := range versions {
 			if v.Version == memVersions[0] {
 				break
 			}
 
-			mapped = append(mapped, v.Version)
-			idx := strings.LastIndex(v.Version, ".")
-			if idx < 2 {
-				idx = len(v.Version) - 1
-			}
-
-			curr, err := strconv.Atoi(v.Version[2:idx])
-			fmt.Printf("V: %s %#+v %d\n", v.Version, v.Version[2:idx], idx)
-			if err != nil {
-				return err
-			}
-
-			if major != curr {
-				major = curr
-				bs.WriteBits(minor, 4)
-				minor = 0
-				continue
-			}
-			minor++
+			newVersions = append(newVersions, v.Version)
 		}
-		bs.SetBit((major-nextMajor)&1 == 0, 0)
-		fmt.Printf("%#+v\n", bs.String())
-		bs.SaveToDisk("versions")
-		c.versions = append(mapped, c.versions...)
+
+		c.versions = append(newVersions, c.versions...)
+		if err := c.saveCfg(); err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -345,7 +321,7 @@ func (c *cli) setQueryCmd(tokens []token) error {
 	}
 
 	fmt.Println("Query Updated:", c.query)
-	return nil
+	return c.saveCfg()
 }
 
 func (c *cli) debugCmd([]token) error {
