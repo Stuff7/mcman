@@ -69,7 +69,6 @@ func getJSON[T any](ret *T, url string) error {
 	}
 
 	var apiRes CfResponse[T]
-	dumpHttp(res, dumpJson(body, err))
 	if err := json.Unmarshal(body, &apiRes); err != nil {
 		return dumpHttp(res, dumpJson(body, err))
 	}
