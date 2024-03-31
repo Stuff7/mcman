@@ -3,6 +3,7 @@ package api
 import (
 	"errors"
 	"fmt"
+	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -38,6 +39,7 @@ const (
 	CmdSet commandType = iota
 	CmdAdd
 	CmdRem
+	CmdDownload
 	CmdList
 	CmdSearch
 	CmdHelp
@@ -50,6 +52,7 @@ var commands = []command{
 	newCommand(CmdHelp, "Print this table", "help", "h"),
 	newCommand(CmdAdd, "Add a new mod", "add"),
 	newCommand(CmdRem, "Remove a mod", "remove", "rm", "rem", "del"),
+	newCommand(CmdDownload, "Download all mods", "download", "dwn"),
 	newCommand(CmdList, "List all the mods", "list", "ls"),
 	newCommand(CmdSet, "Set global query parameters", "set", "global"),
 	newCommand(CmdSearch, "Search mods", "search", "find", "fn"),
@@ -85,6 +88,8 @@ func (c *cli) parseCmd(tokens []token) (Cmd, []token) {
 			case CmdRem:
 				parseKeywords = remCmdKwords
 				cmd.Run = c.remCmd
+			case CmdDownload:
+				cmd.Run = c.downloadCmd
 			case CmdList:
 				cmd.Run = c.listCmd
 			case CmdSet:
@@ -191,6 +196,35 @@ func (c *cli) remCmd(tokens []token) error {
 		}
 
 		prevT = t
+	}
+
+	return nil
+}
+
+func (c *cli) downloadCmd(tokens []token) error {
+	if len(tokens) == 0 {
+		return errors.New("Usage: download [directory]")
+	}
+	var i int
+	var dir string
+	t := nextNonSpaceToken(tokens, &i)
+	if t != nil && t.typ == String {
+		dir = t.parseString()
+	}
+
+	var txt string
+	for i, m := range c.mods {
+		downloaded, err := downloadFile(m.downloadUrl, filepath.Join(dir, m.name))
+		if err != nil {
+			txt = fmt.Sprintf("%sdownload failed\t%s", clr(218), err)
+			time.Sleep(time.Second)
+		} else if downloaded {
+			txt = clr(48) + "downloaded"
+			time.Sleep(time.Second)
+		} else {
+			txt = clr(45) + "already exists"
+		}
+		fmt.Printf("[%s%03d%s / %s%03d%s] %s%#+v %s\t%s\n", clr(156), i+1, RESET, clr(156), len(c.mods), RESET, BOLD, m.name, txt, RESET)
 	}
 
 	return nil

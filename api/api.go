@@ -77,6 +77,31 @@ func getJSON[T any](ret *T, url string) error {
 	return nil
 }
 
+func downloadFile(url string, name string) (bool, error) {
+	if _, err := os.Stat(name); err == nil {
+		return false, nil
+	}
+
+	res, err := http.Get(url)
+	if err != nil {
+		return false, dumpHttp(res, err)
+	}
+	defer res.Body.Close()
+
+	file, err := os.Create(name)
+	if err != nil {
+		return true, err
+	}
+	defer file.Close()
+
+	_, err = io.Copy(file, res.Body)
+	if err != nil {
+		return true, err
+	}
+
+	return true, nil
+}
+
 const nextMajor int = 20
 
 var memVersions = []string{
