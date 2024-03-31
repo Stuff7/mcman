@@ -15,6 +15,16 @@ func Flatten[S any](slice [][]S) []S {
 	return flat
 }
 
+func Filter[S any](s []S, f func(S) bool) []S {
+	var sf []S
+	for _, s := range s {
+		if f(s) {
+			sf = append(sf, s)
+		}
+	}
+	return sf
+}
+
 func Map[S, M any](ts []S, f func(S) M) []M {
 	us := make([]M, len(ts))
 	for i := range ts {

@@ -37,6 +37,7 @@ func newCommand(typ commandType, desc string, aliases ...string) command {
 const (
 	CmdSet commandType = iota
 	CmdAdd
+	CmdRem
 	CmdList
 	CmdSearch
 	CmdHelp
@@ -48,6 +49,7 @@ const (
 var commands = []command{
 	newCommand(CmdHelp, "Print this table", "help", "h"),
 	newCommand(CmdAdd, "Add a new mod", "add"),
+	newCommand(CmdRem, "Remove a mod", "remove", "rm", "rem", "del"),
 	newCommand(CmdList, "List all the mods", "list", "ls"),
 	newCommand(CmdSet, "Set global query parameters", "set", "global"),
 	newCommand(CmdSearch, "Search mods", "search", "find", "fn"),
@@ -80,6 +82,9 @@ func (c *cli) parseCmd(tokens []token) (Cmd, []token) {
 			case CmdAdd:
 				parseKeywords = addCmdKwords
 				cmd.Run = c.addCmd
+			case CmdRem:
+				parseKeywords = remCmdKwords
+				cmd.Run = c.remCmd
 			case CmdList:
 				cmd.Run = c.listCmd
 			case CmdSet:
@@ -138,11 +143,56 @@ func (c *cli) listCmd([]token) error {
 	for i, m := range c.mods {
 		sb.WriteString(fmt.Sprintf("\n%s%03d%s %s%s%s # %s%d%s", clr(157)+BOLD, i, RESET, clr(214)+BOLD, m.name, RESET, clr(157), m.id, RESET))
 		sb.WriteString(fmt.Sprintf(" [%s%s %s%s%s]\n", clr(228)+BOLD, modLoaderKeywords[m.modLoader], clr(231), m.gameVersion, RESET))
+		if len(m.deps) > 0 {
+			sb.WriteString(fmt.Sprintf("Deps:     %s%v%s\n", clr(157)+BOLD, m.deps, RESET))
+		}
 		sb.WriteString(fmt.Sprintf("Download: %s%s%s\n", clr(123)+BOLD, m.downloadUrl, RESET))
 		sb.WriteString(fmt.Sprintf("Uploaded: %s%s%s\n", clr(219)+BOLD, m.uploaded.Format(time.RFC822), RESET))
 	}
 
 	println(sb.String())
+	return nil
+}
+
+func (c *cli) remCmd(tokens []token) error {
+	if len(tokens) == 0 {
+		return errors.New("Usage: rem <option> [optionValue]\noptions:\n\tsearch <string>\n\tid <number>\n\tindex <number>")
+	}
+
+	var prevT *token
+	var i int
+	for {
+		t := nextNonSpaceToken(tokens, &i)
+		if t == nil {
+			break
+		}
+
+		if prevT != nil && prevT.typ == Keyword {
+			switch prevT.val {
+			case "search":
+				if t.typ != String {
+					return errors.New("Invalid search value. Expected a string")
+				}
+
+				if err := c.remMod(t.parseString(), false); err != nil {
+					return err
+				}
+				continue
+			case "id", "index":
+				if t.typ != Number {
+					return errors.New("Invalid mod id value. Expected a number")
+				}
+
+				if err := c.remMod(t.parseNumber(), prevT.val == "index"); err != nil {
+					return err
+				}
+				continue
+			}
+		}
+
+		prevT = t
+	}
+
 	return nil
 }
 
@@ -266,8 +316,13 @@ func (c *cli) helpCmd(tokens []token) error {
 	return c.helpCmd(tokens)
 }
 
-func (c *cli) quitCmd([]token) error {
+func (c *cli) quitCmd(tokens []token) error {
 	c.Running = false
+	var i int
+	if t := nextNonSpaceToken(tokens, &i); t != nil && t.typ == Symbol && t.val == "!" {
+		return nil
+	}
+
 	return c.saveMods()
 }
 
@@ -284,7 +339,7 @@ func (c *cli) searchCmd(tokens []token) error {
 		return err
 	}
 	for _, mod := range mods {
-		fmt.Printf("[%sID: %s%d%s] %s\n%sDownloads: %s%d\n%s%s\n\n", clr(218), clr(194), mod.ID, RESET, mod.Name, clr(218), clr(194), mod.DownloadCount, RESET, mod.Summary)
+		fmt.Printf("[%sID: %s%d%s] %s\n%sDownloads: %s%d\n%s%s\n\n", clr(218), clr(194), mod.Files[0].ID, RESET, mod.Name, clr(218), clr(194), mod.DownloadCount, RESET, mod.Summary)
 	}
 	return nil
 }
@@ -306,7 +361,7 @@ func (c *cli) setQueryCmd(tokens []token) error {
 			switch k.val {
 			case "gameVersion":
 				if v.typ != Keyword {
-					return errors.New(fmt.Sprintf("Invalid value %+v", v))
+					return fmt.Errorf("Invalid value %+v", v)
 				}
 				c.query.GameVersion = v.val
 			case "modLoader":
@@ -316,7 +371,7 @@ func (c *cli) setQueryCmd(tokens []token) error {
 				c.query.ModLoader = slices.Index(modLoaderKeywords, v.val)
 			}
 		} else {
-			return errors.New(fmt.Sprintf("Unknown query key %s", k.val))
+			return fmt.Errorf("Unknown query key %s", k.val)
 		}
 	}
 

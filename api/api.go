@@ -11,6 +11,8 @@ import (
 	"os"
 	"slices"
 	"time"
+
+	"github.com/stuff7/mcman/slc"
 )
 
 var CF_KEY = os.Getenv("CURSEFORGE_KEY")
@@ -34,7 +36,7 @@ func dumpHttp(r *http.Response, errs ...error) error {
 	errs = append(
 		errs,
 		err,
-		errors.New(fmt.Sprintf("\nREQUEST:\n%s\nRESPONSE:\n%s\n----------------\n", string(req), string(res))),
+		fmt.Errorf("\nREQUEST:\n%s\nRESPONSE:\n%s\n----------------\n", string(req), string(res)),
 	)
 	return errors.Join(errs...)
 }
@@ -45,7 +47,7 @@ func dumpJson(body []byte, errs ...error) error {
 	errs = append(
 		errs,
 		err,
-		errors.New(fmt.Sprintf("\nJSON:\n%s\n----------------\n", string(pretty.Bytes()))),
+		fmt.Errorf("\nJSON:\n%s\n----------------\n", string(pretty.Bytes())),
 	)
 	return errors.Join(errs...)
 }
@@ -67,6 +69,7 @@ func getJSON[T any](ret *T, url string) error {
 	}
 
 	var apiRes CfResponse[T]
+	dumpHttp(res, dumpJson(body, err))
 	if err := json.Unmarshal(body, &apiRes); err != nil {
 		return dumpHttp(res, dumpJson(body, err))
 	}
@@ -199,6 +202,7 @@ type modEntry struct {
 	gameVersion string
 	name        string
 	downloadUrl string
+	deps        []int
 	uploaded    time.Time
 }
 
@@ -211,9 +215,71 @@ func appendModEntry(mods []modEntry, id int, query searchQuery, f *CfFile) []mod
 			name:        f.Name,
 			downloadUrl: f.DownloadURL,
 			uploaded:    f.Uploaded,
+			deps: slc.Map(
+				slc.Filter(f.Dependencies, func(d Dependency) bool { return d.Relation == RequiredDependency }),
+				func(d Dependency) int { return d.ModId },
+			),
 		})
 	}
 	return mods
+}
+
+func collectDeps(mods []modEntry, id int, rem *[]int) error {
+	idx := slices.IndexFunc(mods, func(m modEntry) bool { return m.id == id })
+	if idx == -1 {
+		return nil
+	}
+	mod := &mods[idx]
+	if len(mod.deps) > 0 {
+		*rem = append(*rem, mod.deps...)
+		for _, d := range mod.deps {
+			collectDeps(mods, d, rem)
+		}
+	}
+
+	return nil
+}
+
+func removeModEntry(mods *[]modEntry, idx int) error {
+	if idx < 0 || idx >= len(*mods) {
+		return fmt.Errorf("Not found")
+	}
+
+	mod := &(*mods)[idx]
+	rem := append([]int{mod.id}, mod.deps...)
+	for i := 1; i < len(rem); i++ {
+		collectDeps(*mods, rem[i], &rem)
+	}
+
+	for i := 0; i < len(*mods); i++ {
+		m := &(*mods)[i]
+		if mod.id == m.id {
+			continue
+		}
+		for i, r := range rem {
+			if slices.Contains(rem, m.id) || !slices.Contains(m.deps, r) {
+				continue
+			}
+			if mod.id == r {
+				return fmt.Errorf("Cannot remove mod %#+v because other mods depend on it", mod.name)
+			}
+			rem = slices.Delete(rem, i, i+1)
+		}
+	}
+
+	*mods = slc.Filter(*mods, func(m modEntry) bool {
+		remove := slices.Contains(rem, m.id)
+		if remove {
+			if m.id != mod.id {
+				fmt.Printf("%s- Dep %s%s%s removed\n", clr(216), BOLD, m.name, RESET)
+			} else {
+				fmt.Printf("%s- Mod %s%s%s removed\n", clr(219), BOLD, m.name, RESET)
+			}
+		}
+		return !remove
+	})
+
+	return nil
 }
 
 type ModFiles struct {

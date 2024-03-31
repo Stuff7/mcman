@@ -10,6 +10,32 @@ import (
 	"github.com/stuff7/mcman/slc"
 )
 
+func (c *cli) remMod(search any, isIdx bool) error {
+	idx := -1
+	switch id := search.(type) {
+	case string:
+		idx = slices.IndexFunc(c.mods, func(m modEntry) bool {
+			return strings.Contains(strings.ToLower(m.name), id)
+		})
+		if idx == -1 {
+			return fmt.Errorf("Could not find mod %#+v", id)
+		}
+	case int:
+		idx = id
+		if !isIdx {
+			idx = slices.IndexFunc(c.mods, func(m modEntry) bool { return m.id == id })
+
+			if idx == -1 {
+				return fmt.Errorf("Could not find mod with id %d", id)
+			}
+		}
+	default:
+		return errors.New("Invalid search")
+	}
+
+	return removeModEntry(&c.mods, idx)
+}
+
 func (c *cli) addMod(search any, isDependency bool) error {
 	var id int
 	var f *CfFile
@@ -48,7 +74,7 @@ func (c *cli) addMod(search any, isDependency bool) error {
 		fmt.Printf("%s+ Mod %s%s%s added\n", clr(49), BOLD, f.Name, RESET)
 	}
 	for _, d := range f.Dependencies {
-		if !slices.ContainsFunc(c.mods, func(m modEntry) bool { return d.ModId == m.id }) {
+		if d.Relation == RequiredDependency && !slices.ContainsFunc(c.mods, func(m modEntry) bool { return d.ModId == m.id }) {
 			return c.addMod(d.ModId, true)
 		}
 	}

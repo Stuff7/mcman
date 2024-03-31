@@ -18,14 +18,14 @@ func FromBuffer(buf []byte) *Bitstream {
 }
 
 func (bs *Bitstream) BitPosition() int {
-	return bs.b
+	return bs.b + bs.i*8
 }
 
 func (bs *Bitstream) SetBit(state bool, pos int) error {
 	b := byte(pos % 8)
 	i := pos >> 3
 	if i >= len(bs.buf) {
-		return errors.New(fmt.Sprintf("Bit position %d is out of bounds for bitstream of %d bytes", pos, len(bs.buf)))
+		return fmt.Errorf("Bit position %d is out of bounds for bitstream of %d bytes", pos, len(bs.buf))
 	}
 
 	cb := &bs.buf[i]
@@ -47,7 +47,7 @@ func (bs *Bitstream) WritePascalString(s string) error {
 	b := bs.currentByte()
 	sLen := len(s)
 	if sLen > 0xFF {
-		return errors.New(fmt.Sprintf("String is too long cannot write as Pascal: %#+v", s))
+		return fmt.Errorf("String is too long cannot write as Pascal: %#+v", s)
 	}
 
 	*b = byte(sLen)
@@ -69,6 +69,16 @@ func WriteBits[T int | int64](bs *Bitstream, t T, bits int) {
 		bs.i += written >> 3
 		bits -= size
 	}
+}
+
+func (bs *Bitstream) SetBits(t, bp, bits int) {
+	b := bs.b
+	i := bs.i
+	bs.b = bp % 8
+	bs.i = bp >> 3
+	WriteBits(bs, t, bits)
+	bs.b = b
+	bs.i = i
 }
 
 func (bs *Bitstream) WriteBits(t int, bits int) {

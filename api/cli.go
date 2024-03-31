@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -64,7 +63,7 @@ func saveQuery(bs *bitstream.Bitstream, modLoader int, gameVersion string) error
 	bs.WriteBits(modLoader, 3)
 
 	if len(gameVersion) < 2 {
-		return errors.New(fmt.Sprintf("Invalid game version string %#+v", gameVersion))
+		return fmt.Errorf("Invalid game version string %#+v", gameVersion)
 	}
 
 	idx := strings.Index(gameVersion[2:], ".")
@@ -125,8 +124,9 @@ func (c *cli) saveCfg() error {
 
 	major := nextMajor
 	minor := 0
-	bs.WriteBits(0, 1) // Allocate 1 bitflag to indicate if there's an even number of versions
-	evenVersionsPos := bs.BitPosition()
+	versionsPos := bs.BitPosition()
+	versionsLen := 0
+	bs.WriteBits(0, 8) // Allocate 8 bits for the length
 	for _, v := range c.versions {
 		idx := strings.LastIndex(v, ".")
 		if idx < 2 {
@@ -142,6 +142,7 @@ func (c *cli) saveCfg() error {
 			major = curr
 			bs.WriteBits(minor-1, 4)
 			minor = 0
+			versionsLen++
 		} else {
 			minor++
 		}
@@ -150,7 +151,8 @@ func (c *cli) saveCfg() error {
 			break
 		}
 	}
-	bs.SetBit((major-nextMajor)&1 == 0, evenVersionsPos)
+
+	bs.SetBits(versionsLen, versionsPos, 8)
 	bs.SaveToDisk("cfg")
 
 	return nil
@@ -176,12 +178,12 @@ func (c *cli) loadFiles() error {
 	}
 
 	major := nextMajor
-	evenVersions, err := bs.ReadBits(&bitpos, 1)
+	versionsLen, err := bs.ReadBits(&bitpos, 8)
 	if err != nil {
 		return err
 	}
 
-	for {
+	for i := 0; i < versionsLen; i++ {
 		v, err := bs.ReadBits(&bitpos, 4)
 		if err != nil {
 			break
@@ -193,9 +195,6 @@ func (c *cli) loadFiles() error {
 		major++
 	}
 
-	if evenVersions != 0 && (major-nextMajor)&1 != 0 {
-		c.versions = slices.Delete(c.versions, 0, 1)
-	}
 	c.versions = append(c.versions, memVersions...)
 
 	return nil
@@ -224,15 +223,32 @@ func (c *cli) readMods() error {
 			return err
 		}
 
-		m.name, err = bs.ReadPascalString(&b)
+		id1, err := bs.ReadBits(&b, 14)
+		if err != nil {
+			return err
+		}
+		id2, err := bs.ReadBits(&b, 10)
 		if err != nil {
 			return err
 		}
 
-		m.downloadUrl, err = bs.ReadPascalString(&b)
+		depsLen, err := bs.ReadBits(&b, 4)
 		if err != nil {
 			return err
 		}
+		for i := 0; i < depsLen; i++ {
+			dep, err := bs.ReadBits(&b, 24)
+			if err != nil {
+				return err
+			}
+			m.deps = append(m.deps, dep)
+		}
+
+		m.name, err = bs.ReadPascalString(&b)
+		if err != nil {
+			return err
+		}
+		m.downloadUrl = fmt.Sprintf("%s%d/%d/%s", downloadURL, id1, id2, m.name)
 
 		uploaded, err := bs.ReadBits64(&b, 64)
 		if err != nil {
@@ -246,6 +262,8 @@ func (c *cli) readMods() error {
 	return nil
 }
 
+const downloadURL = "https://edge.forgecdn.net/files/"
+
 func (c *cli) saveMods() error {
 	var bs bitstream.Bitstream
 	for _, m := range c.mods {
@@ -254,11 +272,31 @@ func (c *cli) saveMods() error {
 			return err
 		}
 
-		if err := bs.WritePascalString(m.name); err != nil {
+		r, ok := strings.CutPrefix(m.downloadUrl, downloadURL)
+		if !ok {
+			return fmt.Errorf("Download URL mismatch %#+v", r)
+		}
+		ids := strings.Split(r, "/")
+		if len(ids) < 2 {
+			return fmt.Errorf("Download URL missing id %#+v", ids)
+		}
+		id1, err := strconv.Atoi(ids[0])
+		if err != nil {
+			return err
+		}
+		id2, err := strconv.Atoi(ids[1])
+		if err != nil {
 			return err
 		}
 
-		if err := bs.WritePascalString(m.downloadUrl); err != nil {
+		bs.WriteBits(id1, 14)
+		bs.WriteBits(id2, 10)
+		bs.WriteBits(len(m.deps), 4)
+		for _, dep := range m.deps {
+			bs.WriteBits(dep, 24)
+		}
+
+		if err := bs.WritePascalString(m.name); err != nil {
 			return err
 		}
 
