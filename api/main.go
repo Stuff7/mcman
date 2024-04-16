@@ -1,21 +1,52 @@
 package api
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"os"
 	"reflect"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/stuff7/mcman/slc"
 )
+
+func (c *cli) importMods(path string) error {
+	file, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	body, err := io.ReadAll(file)
+	if err != nil {
+		return err
+	}
+
+	var mods []importFile
+	if err := json.Unmarshal(body, &mods); err != nil {
+		return dumpJson(body, err)
+	}
+
+	for _, mod := range mods {
+		if err := c.addMod(mod.ID, false); err != nil {
+			fmt.Printf("%s! %s%s%s\n", clr(210), BOLD, err, RESET)
+		}
+		time.Sleep(time.Millisecond * 100)
+	}
+
+	return nil
+}
 
 func (c *cli) remMod(search any, isIdx bool) error {
 	idx := -1
 	switch id := search.(type) {
 	case string:
 		idx = slices.IndexFunc(c.mods, func(m modEntry) bool {
-			return strings.Contains(strings.ToLower(m.name), id)
+			return strings.Contains(strings.ToLower(m.Name), id)
 		})
 		if idx == -1 {
 			return fmt.Errorf("Could not find mod %#+v", id)
@@ -23,7 +54,7 @@ func (c *cli) remMod(search any, isIdx bool) error {
 	case int:
 		idx = id
 		if !isIdx {
-			idx = slices.IndexFunc(c.mods, func(m modEntry) bool { return m.id == id })
+			idx = slices.IndexFunc(c.mods, func(m modEntry) bool { return m.Id == id })
 
 			if idx == -1 {
 				return fmt.Errorf("Could not find mod with id %d", id)
@@ -60,11 +91,11 @@ func (c *cli) addMod(search any, isDependency bool) error {
 		}
 
 		id = m.ID
-		f = slc.Last(m.Files)
+		f = slc.Get(m.Files, 0)
 	}
 
 	if f == nil {
-		return errors.New("No downloads found")
+		return fmt.Errorf("No downloads found for %+v", search)
 	}
 
 	c.mods = appendModEntry(c.mods, id, c.query, f)
@@ -74,7 +105,7 @@ func (c *cli) addMod(search any, isDependency bool) error {
 		fmt.Printf("%s+ Mod %s%s%s added\n", clr(49), BOLD, f.Name, RESET)
 	}
 	for _, d := range f.Dependencies {
-		if d.Relation == RequiredDependency && !slices.ContainsFunc(c.mods, func(m modEntry) bool { return d.ModId == m.id }) {
+		if d.Relation == RequiredDependency && !slices.ContainsFunc(c.mods, func(m modEntry) bool { return d.ModId == m.Id }) {
 			return c.addMod(d.ModId, true)
 		}
 	}

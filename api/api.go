@@ -43,12 +43,19 @@ func dumpHttp(r *http.Response, errs ...error) error {
 
 func dumpJson(body []byte, errs ...error) error {
 	var pretty bytes.Buffer
+
 	err := json.Indent(&pretty, body, "", "  ")
+	jsonErr := fmt.Errorf("\nJSON:\n%s\n----------------\n", string(pretty.Bytes()))
+	if len(errs) == 0 {
+		return jsonErr
+	}
+
 	errs = append(
 		errs,
 		err,
-		fmt.Errorf("\nJSON:\n%s\n----------------\n", string(pretty.Bytes())),
+		jsonErr,
 	)
+
 	return errors.Join(errs...)
 }
 
@@ -221,25 +228,25 @@ type Dependency struct {
 }
 
 type modEntry struct {
-	id          int
-	modLoader   int
-	gameVersion string
-	name        string
-	downloadUrl string
-	deps        []int
-	uploaded    time.Time
+	Id          int       `json:"id"`
+	ModLoader   int       `json:"modLoader"`
+	GameVersion string    `json:"gameVersion"`
+	Name        string    `json:"name"`
+	DownloadUrl string    `json:"downloadUrl"`
+	Deps        []int     `json:"deps"`
+	Uploaded    time.Time `json:"uploaded"`
 }
 
 func appendModEntry(mods []modEntry, id int, query searchQuery, f *CfFile) []modEntry {
-	if !slices.ContainsFunc(mods, func(m modEntry) bool { return id == m.id }) {
+	if !slices.ContainsFunc(mods, func(m modEntry) bool { return id == m.Id }) {
 		return append(mods, modEntry{
-			id:          id,
-			modLoader:   query.ModLoader,
-			gameVersion: query.GameVersion,
-			name:        f.Name,
-			downloadUrl: f.DownloadURL,
-			uploaded:    f.Uploaded,
-			deps: slc.Map(
+			Id:          id,
+			ModLoader:   query.ModLoader,
+			GameVersion: query.GameVersion,
+			Name:        f.Name,
+			DownloadUrl: tryGetURL(f),
+			Uploaded:    f.Uploaded,
+			Deps: slc.Map(
 				slc.Filter(f.Dependencies, func(d Dependency) bool { return d.Relation == RequiredDependency }),
 				func(d Dependency) int { return d.ModId },
 			),
@@ -248,15 +255,36 @@ func appendModEntry(mods []modEntry, id int, query searchQuery, f *CfFile) []mod
 	return mods
 }
 
+func tryGetURL(f *CfFile) string {
+	if f.DownloadURL == nil {
+		fmt.Printf("%s! %sMissing Download URL for mod %+v. Trying to guess it%s\n", clr(227), BOLD, f.Name, RESET)
+		var ids [2]int
+		if f.ID > 999999 {
+			ids[0] = f.ID / 1000
+			ids[1] = f.ID % 1000
+		} else if f.ID > 99999 {
+			ids[0] = f.ID / 100
+			ids[1] = f.ID % 100
+		} else {
+			ids[0] = f.ID / 100
+			ids[1] = f.ID % 10
+		}
+
+		return fmt.Sprintf("%s%d/%03d/%s", downloadURL, ids[0], ids[1], f.Name)
+	}
+
+	return *f.DownloadURL
+}
+
 func collectDeps(mods []modEntry, id int, rem *[]int) error {
-	idx := slices.IndexFunc(mods, func(m modEntry) bool { return m.id == id })
+	idx := slices.IndexFunc(mods, func(m modEntry) bool { return m.Id == id })
 	if idx == -1 {
 		return nil
 	}
 	mod := &mods[idx]
-	if len(mod.deps) > 0 {
-		*rem = append(*rem, mod.deps...)
-		for _, d := range mod.deps {
+	if len(mod.Deps) > 0 {
+		*rem = append(*rem, mod.Deps...)
+		for _, d := range mod.Deps {
 			collectDeps(mods, d, rem)
 		}
 	}
@@ -270,34 +298,34 @@ func removeModEntry(mods *[]modEntry, idx int) error {
 	}
 
 	mod := &(*mods)[idx]
-	rem := append([]int{mod.id}, mod.deps...)
+	rem := append([]int{mod.Id}, mod.Deps...)
 	for i := 1; i < len(rem); i++ {
 		collectDeps(*mods, rem[i], &rem)
 	}
 
 	for i := 0; i < len(*mods); i++ {
 		m := &(*mods)[i]
-		if mod.id == m.id {
+		if mod.Id == m.Id {
 			continue
 		}
 		for i, r := range rem {
-			if slices.Contains(rem, m.id) || !slices.Contains(m.deps, r) {
+			if slices.Contains(rem, m.Id) || !slices.Contains(m.Deps, r) {
 				continue
 			}
-			if mod.id == r {
-				return fmt.Errorf("Cannot remove mod %#+v because other mods depend on it", mod.name)
+			if mod.Id == r {
+				return fmt.Errorf("Cannot remove mod %#+v because other mods depend on it", mod.Name)
 			}
 			rem = slices.Delete(rem, i, i+1)
 		}
 	}
 
 	*mods = slc.Filter(*mods, func(m modEntry) bool {
-		remove := slices.Contains(rem, m.id)
+		remove := slices.Contains(rem, m.Id)
 		if remove {
-			if m.id != mod.id {
-				fmt.Printf("%s- Dep %s%s%s removed\n", clr(216), BOLD, m.name, RESET)
+			if m.Id != mod.Id {
+				fmt.Printf("%s- Dep %s%s%s removed\n", clr(216), BOLD, m.Name, RESET)
 			} else {
-				fmt.Printf("%s- Mod %s%s%s removed\n", clr(219), BOLD, m.name, RESET)
+				fmt.Printf("%s- Mod %s%s%s removed\n", clr(219), BOLD, m.Name, RESET)
 			}
 		}
 		return !remove
@@ -313,6 +341,10 @@ type ModFiles struct {
 	Files       []CfFile
 }
 
+type importFile struct {
+	ID int `json:"id"`
+}
+
 type gameVersion struct {
 	Version string `json:"versionString"`
 }
@@ -326,7 +358,7 @@ type CfFile struct {
 	ID                int          `json:"id"`
 	Name              string       `json:"fileName"`
 	Size              int          `json:"fileLength"`
-	DownloadURL       string       `json:"downloadUrl"`
+	DownloadURL       *string      `json:"downloadUrl"`
 	SupportedVersions []string     `json:"gameVersions"`
 	Dependencies      []Dependency `json:"dependencies"`
 	Release           ReleaseType  `json:"releaseType"`

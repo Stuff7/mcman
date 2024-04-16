@@ -55,7 +55,7 @@ func (c *cli) Run() error {
 		}
 	}
 
-	println("Quit")
+	println("\x1b[?25h")
 	return nil
 }
 
@@ -214,12 +214,12 @@ func (c *cli) readMods() error {
 	b := 0
 	for {
 		var m modEntry
-		m.id, err = bs.ReadBits(&b, 24)
+		m.Id, err = bs.ReadBits(&b, 24)
 		if err != nil {
 			break
 		}
 
-		if err := readQuery(bs, &b, &m.modLoader, &m.gameVersion); err != nil {
+		if err := readQuery(bs, &b, &m.ModLoader, &m.GameVersion); err != nil {
 			return err
 		}
 
@@ -241,21 +241,21 @@ func (c *cli) readMods() error {
 			if err != nil {
 				return err
 			}
-			m.deps = append(m.deps, dep)
+			m.Deps = append(m.Deps, dep)
 		}
 
-		m.name, err = bs.ReadPascalString(&b)
+		m.Name, err = bs.ReadPascalString(&b)
 		if err != nil {
 			return err
 		}
-		m.downloadUrl = fmt.Sprintf("%s%d/%d/%s", downloadURL, id1, id2, m.name)
+		m.DownloadUrl = fmt.Sprintf("%s%d/%d/%s", downloadURL, id1, id2, m.Name)
 
 		uploaded, err := bs.ReadBits64(&b, 64)
 		if err != nil {
 			return err
 		}
 
-		m.uploaded = time.Unix(uploaded, 0).UTC()
+		m.Uploaded = time.Unix(uploaded, 0).UTC()
 		c.mods = append(c.mods, m)
 	}
 
@@ -267,14 +267,32 @@ const downloadURL = "https://edge.forgecdn.net/files/"
 func (c *cli) saveMods() error {
 	var bs bitstream.Bitstream
 	for _, m := range c.mods {
-		bs.WriteBits(m.id, 24)
-		if err := saveQuery(&bs, m.modLoader, m.gameVersion); err != nil {
+		bs.WriteBits(m.Id, 24)
+		if err := saveQuery(&bs, m.ModLoader, m.GameVersion); err != nil {
 			return err
 		}
 
-		r, ok := strings.CutPrefix(m.downloadUrl, downloadURL)
+		r, ok := strings.CutPrefix(m.DownloadUrl, downloadURL)
 		if !ok {
-			return fmt.Errorf("Download URL mismatch %#+v", r)
+			fmt.Printf("Download URL mismatch for mod %+v. URL: %+v\n", m.Name, m.DownloadUrl)
+			slashCount := 0
+			idx := strings.LastIndexFunc(m.DownloadUrl, func(r rune) bool {
+				if r == '/' {
+					slashCount++
+				}
+
+				if slashCount == 3 {
+					return true
+				}
+
+				return false
+			})
+
+			if idx == -1 {
+				return fmt.Errorf("Unexpected download URL form for mod %+v. URL: %+v", m.Name, m.DownloadUrl)
+			}
+
+			r = m.DownloadUrl[idx:]
 		}
 		ids := strings.Split(r, "/")
 		if len(ids) < 2 {
@@ -291,16 +309,16 @@ func (c *cli) saveMods() error {
 
 		bs.WriteBits(id1, 14)
 		bs.WriteBits(id2, 10)
-		bs.WriteBits(len(m.deps), 4)
-		for _, dep := range m.deps {
+		bs.WriteBits(len(m.Deps), 4)
+		for _, dep := range m.Deps {
 			bs.WriteBits(dep, 24)
 		}
 
-		if err := bs.WritePascalString(m.name); err != nil {
+		if err := bs.WritePascalString(m.Name); err != nil {
 			return err
 		}
 
-		bs.WriteBits64(m.uploaded.Unix(), 64)
+		bs.WriteBits64(m.Uploaded.Unix(), 64)
 	}
 
 	return bs.SaveToDisk("modlist")

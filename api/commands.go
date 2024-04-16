@@ -1,8 +1,10 @@
 package api
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -39,6 +41,9 @@ const (
 	CmdSet commandType = iota
 	CmdAdd
 	CmdRem
+	CmdImport
+	CmdExport
+	CmdClear
 	CmdDownload
 	CmdList
 	CmdSearch
@@ -52,6 +57,9 @@ var commands = []command{
 	newCommand(CmdHelp, "Print this table", "help", "h"),
 	newCommand(CmdAdd, "Add a new mod", "add"),
 	newCommand(CmdRem, "Remove a mod", "remove", "rm", "rem", "del"),
+	newCommand(CmdImport, "Import mods from json file { id: string }[]", "import"),
+	newCommand(CmdExport, "Export mods to json file", "export"),
+	newCommand(CmdClear, "Clear the terminal", "clear"),
 	newCommand(CmdDownload, "Download all mods", "download", "dwn"),
 	newCommand(CmdList, "List all the mods", "list", "ls"),
 	newCommand(CmdSet, "Set global query parameters", "set", "global"),
@@ -88,6 +96,12 @@ func (c *cli) parseCmd(tokens []token) (Cmd, []token) {
 			case CmdRem:
 				parseKeywords = remCmdKwords
 				cmd.Run = c.remCmd
+			case CmdImport:
+				cmd.Run = c.importCmd
+			case CmdExport:
+				cmd.Run = c.exportCmd
+			case CmdClear:
+				cmd.Run = c.clearCmd
 			case CmdDownload:
 				cmd.Run = c.downloadCmd
 			case CmdList:
@@ -141,18 +155,71 @@ func findClosest(in string, aliases []string) *string {
 	return nil
 }
 
+func (c *cli) clearCmd([]token) error {
+	fmt.Printf("\x1b[2J\x1b[1;1H%s", LOGO)
+	return nil
+}
+
+func (c *cli) exportCmd(tokens []token) error {
+	var out string
+	if len(tokens) == 0 {
+		out = "mods.json"
+	} else {
+		var i int
+		t := nextNonSpaceToken(tokens, &i)
+		if t != nil && t.typ == String {
+			out = t.parseString()
+		}
+	}
+
+	data, err := json.Marshal(c.mods)
+	if err != nil {
+		return err
+	}
+
+	if err := os.WriteFile(out, data, 0666); err != nil {
+		return err
+	}
+
+	fmt.Printf("Exported %d mods to %+v\n", len(c.mods), out)
+
+	return nil
+}
+
+func (c *cli) importCmd(tokens []token) error {
+	if len(tokens) == 0 {
+		return errors.New("Usage: import <file.json>")
+	}
+
+	var i int
+	t := nextNonSpaceToken(tokens, &i)
+	if t == nil {
+		return errors.New("Missing import file path")
+	}
+
+	if t.typ != String {
+		return errors.New("Invalid argument. Expected a string")
+	}
+
+	if err := c.importMods(t.parseString()); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (c *cli) listCmd([]token) error {
 	fmt.Printf("Found %s%d%s mods\n", clr(49), len(c.mods), RESET)
 
 	var sb strings.Builder
 	for i, m := range c.mods {
-		sb.WriteString(fmt.Sprintf("\n%s%03d%s %s%s%s # %s%d%s", clr(157)+BOLD, i, RESET, clr(214)+BOLD, m.name, RESET, clr(157), m.id, RESET))
-		sb.WriteString(fmt.Sprintf(" [%s%s %s%s%s]\n", clr(228)+BOLD, modLoaderKeywords[m.modLoader], clr(231), m.gameVersion, RESET))
-		if len(m.deps) > 0 {
-			sb.WriteString(fmt.Sprintf("Deps:     %s%v%s\n", clr(157)+BOLD, m.deps, RESET))
+		sb.WriteString(fmt.Sprintf("\n%s%03d%s %s%s%s # %s%d%s", clr(157)+BOLD, i, RESET, clr(214)+BOLD, m.Name, RESET, clr(157), m.Id, RESET))
+		sb.WriteString(fmt.Sprintf(" [%s%s %s%s%s]\n", clr(228)+BOLD, modLoaderKeywords[m.ModLoader], clr(231), m.GameVersion, RESET))
+		if len(m.Deps) > 0 {
+			sb.WriteString(fmt.Sprintf("Deps:     %s%v%s\n", clr(157)+BOLD, m.Deps, RESET))
 		}
-		sb.WriteString(fmt.Sprintf("Download: %s%s%s\n", clr(123)+BOLD, m.downloadUrl, RESET))
-		sb.WriteString(fmt.Sprintf("Uploaded: %s%s%s\n", clr(219)+BOLD, m.uploaded.Format(time.RFC822), RESET))
+		sb.WriteString(fmt.Sprintf("Download: %s%s%s\n", clr(123)+BOLD, m.DownloadUrl, RESET))
+		sb.WriteString(fmt.Sprintf("Uploaded: %s%s%s\n", clr(219)+BOLD, m.Uploaded.Format(time.RFC822), RESET))
 	}
 
 	println(sb.String())
@@ -214,7 +281,7 @@ func (c *cli) downloadCmd(tokens []token) error {
 
 	var txt string
 	for i, m := range c.mods {
-		downloaded, err := downloadFile(m.downloadUrl, filepath.Join(dir, m.name))
+		downloaded, err := downloadFile(m.DownloadUrl, filepath.Join(dir, m.Name))
 		if err != nil {
 			txt = fmt.Sprintf("%sdownload failed\t%s", clr(218), err)
 			time.Sleep(time.Second)
@@ -224,7 +291,7 @@ func (c *cli) downloadCmd(tokens []token) error {
 		} else {
 			txt = clr(45) + "already exists"
 		}
-		fmt.Printf("[%s%03d%s / %s%03d%s] %s%#+v %s\t%s\n", clr(156), i+1, RESET, clr(156), len(c.mods), RESET, BOLD, m.name, txt, RESET)
+		fmt.Printf("[%s%03d%s / %s%03d%s] %s%#+v %s\t%s\n", clr(156), i+1, RESET, clr(156), len(c.mods), RESET, BOLD, m.Name, txt, RESET)
 	}
 
 	return nil
@@ -354,9 +421,11 @@ func (c *cli) quitCmd(tokens []token) error {
 	c.Running = false
 	var i int
 	if t := nextNonSpaceToken(tokens, &i); t != nil && t.typ == Symbol && t.val == "!" {
+		fmt.Println("Quit without saving")
 		return nil
 	}
 
+	fmt.Printf("Saved %d mods", len(c.mods))
 	return c.saveMods()
 }
 
