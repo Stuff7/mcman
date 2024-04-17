@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -105,6 +106,7 @@ func (c *cli) parseCmd(tokens []token) (Cmd, []token) {
 			case CmdDownload:
 				cmd.Run = c.downloadCmd
 			case CmdList:
+				parseKeywords = addCmdKwords
 				cmd.Run = c.listCmd
 			case CmdSet:
 				parseKeywords = c.queryCmdKwords
@@ -208,21 +210,41 @@ func (c *cli) importCmd(tokens []token) error {
 	return nil
 }
 
-func (c *cli) listCmd([]token) error {
-	fmt.Printf("Found %s%d%s mods\n", clr(49), len(c.mods), RESET)
-
-	var sb strings.Builder
-	for i, m := range c.mods {
-		sb.WriteString(fmt.Sprintf("\n%s%03d%s %s%s%s # %s%d%s", clr(157)+BOLD, i, RESET, clr(214)+BOLD, m.Name, RESET, clr(157), m.Id, RESET))
-		sb.WriteString(fmt.Sprintf(" [%s%s %s%s%s]\n", clr(228)+BOLD, modLoaderKeywords[m.ModLoader], clr(231), m.GameVersion, RESET))
-		if len(m.Deps) > 0 {
-			sb.WriteString(fmt.Sprintf("Deps:     %s%v%s\n", clr(157)+BOLD, m.Deps, RESET))
-		}
-		sb.WriteString(fmt.Sprintf("Download: %s%s%s\n", clr(123)+BOLD, m.DownloadUrl, RESET))
-		sb.WriteString(fmt.Sprintf("Uploaded: %s%s%s\n", clr(219)+BOLD, m.Uploaded.Format(time.RFC822), RESET))
+func (c *cli) listCmd(tokens []token) error {
+	if len(tokens) == 0 {
+		listMods(c.mods, nil)
+		return nil
 	}
 
-	println(sb.String())
+	var i int
+	t := nextNonSpaceToken(tokens, &i)
+	v := nextNonSpaceToken(tokens, &i)
+
+	if t == nil || v == nil || t.typ != Keyword {
+		return errors.New("Missing argument")
+	}
+
+	var search string
+	switch t.val {
+	case "search":
+		if v.typ != String {
+			return errors.New("Invalid argument type")
+		}
+		search = v.parseString()
+		listMods(c.mods, func(m modEntry) bool {
+			return strings.Contains(m.Name, search) || slc.FuzzyStringCompare(m.Name, search) < 0.8
+		})
+	case "id":
+		if v.typ != Number {
+			return errors.New("Invalid argument type")
+		}
+		search = strconv.Itoa(v.parseNumber())
+		listMods(c.mods, func(m modEntry) bool {
+			return strings.Contains(strconv.Itoa(m.Id), search)
+		})
+	}
+
+	fmt.Printf("No mods found that matched %+v: %+v", t.val, search)
 	return nil
 }
 

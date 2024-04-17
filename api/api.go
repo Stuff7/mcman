@@ -10,6 +10,7 @@ import (
 	"net/http/httputil"
 	"os"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/stuff7/mcman/slc"
@@ -274,6 +275,26 @@ func tryGetURL(f *CfFile) string {
 	}
 
 	return *f.DownloadURL
+}
+
+func listMods(mods []modEntry, filter func(m modEntry) bool) {
+	var count int
+	var sb strings.Builder
+	for i, m := range mods {
+		if filter == nil || filter(m) {
+			count++
+			sb.WriteString(fmt.Sprintf("\n%s%03d%s %s%s%s # %s%d%s", clr(157)+BOLD, i, RESET, clr(214)+BOLD, m.Name, RESET, clr(157), m.Id, RESET))
+			sb.WriteString(fmt.Sprintf(" [%s%s %s%s%s]\n", clr(228)+BOLD, modLoaderKeywords[m.ModLoader], clr(231), m.GameVersion, RESET))
+			if len(m.Deps) > 0 {
+				sb.WriteString(fmt.Sprintf("Deps:     %s%v%s\n", clr(157)+BOLD, m.Deps, RESET))
+			}
+			sb.WriteString(fmt.Sprintf("Download: %s%s%s\n", clr(123)+BOLD, m.DownloadUrl, RESET))
+			sb.WriteString(fmt.Sprintf("Uploaded: %s%s%s\n", clr(219)+BOLD, m.Uploaded.Format(time.RFC822), RESET))
+		}
+	}
+
+	fmt.Printf("Found %s%d%s mods\n", clr(49), count, RESET)
+	println(sb.String())
 }
 
 func collectDeps(mods []modEntry, id int, rem *[]int) error {
