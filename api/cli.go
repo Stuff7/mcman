@@ -3,6 +3,7 @@ package api
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -248,7 +249,7 @@ func (c *cli) readMods() error {
 		if err != nil {
 			return err
 		}
-		m.DownloadUrl = fmt.Sprintf("%s%d/%d/%s", downloadURL, id1, id2, m.Name)
+		m.DownloadUrl = fmt.Sprintf("%s%d/%d/%s", downloadURL, id1, id2, url.QueryEscape(m.Name))
 
 		uploaded, err := bs.ReadBits64(&b, 64)
 		if err != nil {

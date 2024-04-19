@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
@@ -303,7 +304,7 @@ func (c *cli) downloadCmd(tokens []token) error {
 
 	var txt string
 	for i, m := range c.mods {
-		downloaded, err := downloadFile(m.DownloadUrl, filepath.Join(dir, m.Name))
+		downloaded, err := downloadFile(m.DownloadUrl, filepath.Join(dir, url.QueryEscape(m.Name)))
 		if err != nil {
 			txt = fmt.Sprintf("%sdownload failed\t%s", clr(218), err)
 			time.Sleep(time.Second)

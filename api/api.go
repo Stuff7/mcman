@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httputil"
+	"net/url"
 	"os"
 	"slices"
 	"strings"
@@ -271,7 +272,7 @@ func tryGetURL(f *CfFile) string {
 			ids[1] = f.ID % 10
 		}
 
-		return fmt.Sprintf("%s%d/%03d/%s", downloadURL, ids[0], ids[1], f.Name)
+		return fmt.Sprintf("%s%d/%03d/%s", downloadURL, ids[0], ids[1], url.QueryEscape(f.Name))
 	}
 
 	return *f.DownloadURL
@@ -286,7 +287,12 @@ func listMods(mods []modEntry, filter func(m modEntry) bool) {
 			sb.WriteString(fmt.Sprintf("\n%s%03d%s %s%s%s # %s%d%s", clr(157)+BOLD, i, RESET, clr(214)+BOLD, m.Name, RESET, clr(157), m.Id, RESET))
 			sb.WriteString(fmt.Sprintf(" [%s%s %s%s%s]\n", clr(228)+BOLD, modLoaderKeywords[m.ModLoader], clr(231), m.GameVersion, RESET))
 			if len(m.Deps) > 0 {
-				sb.WriteString(fmt.Sprintf("Deps:     %s%v%s\n", clr(157)+BOLD, m.Deps, RESET))
+				deps := slc.Map(slc.Filter(mods, func(d modEntry) bool {
+					return slices.Contains(m.Deps, d.Id)
+				}), func(d modEntry) string {
+					return fmt.Sprintf("%s%d%s#%s%s%s", clr(213)+BOLD, d.Id, clr(219), clr(157), d.Name, RESET)
+				})
+				sb.WriteString(fmt.Sprintf("Deps:     %v\n", deps))
 			}
 			sb.WriteString(fmt.Sprintf("Download: %s%s%s\n", clr(123)+BOLD, m.DownloadUrl, RESET))
 			sb.WriteString(fmt.Sprintf("Uploaded: %s%s%s\n", clr(219)+BOLD, m.Uploaded.Format(time.RFC822), RESET))
