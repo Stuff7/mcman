@@ -3,8 +3,9 @@ package bitstream
 import (
 	"errors"
 	"fmt"
-	"os"
 	"strings"
+
+	"github.com/stuff7/mcman/storage"
 )
 
 type Bitstream struct {
@@ -156,7 +157,7 @@ func turnOffRight(n byte, c byte) byte {
 }
 
 func (bs *Bitstream) SaveToDisk(name string) error {
-	return os.WriteFile(name, bs.buf, 0666)
+	return storage.WriteFile(name, bs.buf)
 }
 
 func (bs Bitstream) String() string {

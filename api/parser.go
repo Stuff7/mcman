@@ -7,6 +7,7 @@ import (
 
 	"github.com/stuff7/mcman/readln"
 	"github.com/stuff7/mcman/slc"
+	"github.com/stuff7/mcman/storage"
 )
 
 type tokenType byte
@@ -143,6 +144,23 @@ func remCmdKwords(tokens []token) []token {
 		}
 
 		t.autocomplete(Keyword, []string{"search", "id", "index"})
+	}
+
+	return tokens
+}
+
+func profileCmdKwords(tokens []token) []token {
+	var i int
+	for {
+		t := nextNonSpaceToken(tokens, &i)
+		if t == nil || t.typ != Unknown {
+			break
+		}
+
+		if children, err := storage.DirChildren("profiles"); err == nil {
+			t.autocomplete(Keyword, children)
+		}
+
 	}
 
 	return tokens

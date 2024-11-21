@@ -1,19 +1,20 @@
 package api
 
 import (
-	"errors"
 	"fmt"
 	"net/url"
-	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/stuff7/mcman/bitstream"
 	"github.com/stuff7/mcman/readln"
+	"github.com/stuff7/mcman/storage"
 )
 
 type cli struct {
+	profile  string
 	query    searchQuery
 	Running  bool
 	prompt   string
@@ -23,7 +24,7 @@ type cli struct {
 }
 
 func NewCli(prompt string) *cli {
-	return &cli{Running: true, prompt: prompt}
+	return &cli{Running: true, prompt: prompt, profile: "default"}
 }
 
 func (c *cli) Run() error {
@@ -32,11 +33,32 @@ func (c *cli) Run() error {
 	var tokens []token
 	var cmd Cmd
 
-	if err := c.loadFiles(); err != nil {
+	if err := c.loadCache(); err != nil {
+		return err
+	}
+
+	if err := c.loadProfile(); err != nil {
 		return err
 	}
 
 	for c.Running {
+		fmt.Printf(
+			"%s  %s%s  %s%d%s %s  %s%s%s %s%s%s\n",
+			clr(225),
+			c.profile,
+			RESET,
+			clr(194),
+			len(c.mods),
+			RESET,
+			pluralize("mod", len(c.mods)),
+			clr(226),
+			modLoaderKeywords[c.query.ModLoader],
+			RESET,
+			clr(194),
+			c.query.GameVersion,
+			RESET,
+		)
+
 		_, err := readln.PushLn(c.prompt, &history, func(k readln.Key, s *string, i *int) string {
 			tokens = tokenize(*s)
 			cmd, tokens = c.parseCmd(tokens)
@@ -57,7 +79,7 @@ func (c *cli) Run() error {
 	}
 
 	println("\x1b[?25h")
-	return nil
+	return c.saveCache()
 }
 
 func saveQuery(bs *bitstream.Bitstream, modLoader int, gameVersion string) error {
@@ -116,25 +138,40 @@ func readQuery(bs *bitstream.Bitstream, b *int, modLoader *int, gameVersion *str
 	return nil
 }
 
-func (c *cli) saveCfg() error {
+func getVersion(v string) (int, error) {
+	idx := strings.LastIndex(v, ".")
+	if idx < 2 {
+		idx = len(v)
+	}
+
+	curr, err := strconv.Atoi(v[2:idx])
+
+	if err != nil {
+		return curr, err
+	}
+
+	return curr, nil
+}
+
+func (c *cli) saveCache() error {
 	var bs bitstream.Bitstream
 
-	if err := saveQuery(&bs, c.query.ModLoader, c.query.GameVersion); err != nil {
+	if err := bs.WritePascalString(c.profile); err != nil {
 		return err
 	}
 
-	major := nextMajor
+	major, err := getVersion(c.versions[0])
+	if err != nil {
+		return err
+	}
+
 	minor := 0
+
 	versionsPos := bs.BitPosition()
 	versionsLen := 0
 	bs.WriteBits(0, 8) // Allocate 8 bits for the length
 	for _, v := range c.versions {
-		idx := strings.LastIndex(v, ".")
-		if idx < 2 {
-			idx = len(v)
-		}
-
-		curr, err := strconv.Atoi(v[2:idx])
+		curr, err := getVersion(v)
 		if err != nil {
 			return err
 		}
@@ -142,7 +179,7 @@ func (c *cli) saveCfg() error {
 		if major != curr {
 			major = curr
 			bs.WriteBits(minor-1, 4)
-			minor = 0
+			minor = 1
 			versionsLen++
 		} else {
 			minor++
@@ -154,46 +191,56 @@ func (c *cli) saveCfg() error {
 	}
 
 	bs.SetBits(versionsLen, versionsPos, 8)
-	bs.SaveToDisk("cfg")
+	bs.SaveToDisk("cache")
 
 	return nil
 }
 
-func (c *cli) loadFiles() error {
-	c.versions = nil
-	c.query.GameVersion = memVersions[0]
-	if err := c.readMods(); err != nil {
+func (c *cli) saveProfile() error {
+	var bs bitstream.Bitstream
+
+	if err := saveQuery(&bs, c.query.ModLoader, c.query.GameVersion); err != nil {
 		return err
 	}
-	versions, err := os.ReadFile("cfg")
-	if err != nil {
+
+	bs.SaveToDisk(c.profilePath("cfg"))
+
+	return nil
+}
+
+func (c *cli) loadCache() error {
+	cache, err := storage.ReadOrCreate("cache")
+	if err != nil || len(cache) == 0 {
 		c.versions = memVersions
 		return nil
 	}
 
-	bs := bitstream.FromBuffer(versions)
+	bs := bitstream.FromBuffer(cache)
 	var bitpos int
 
-	if err := readQuery(bs, &bitpos, &c.query.ModLoader, &c.query.GameVersion); err != nil {
+	profile, err := bs.ReadPascalString(&bitpos)
+	if err != nil {
 		return err
 	}
+	c.profile = profile
 
-	major := nextMajor
 	versionsLen, err := bs.ReadBits(&bitpos, 8)
 	if err != nil {
 		return err
 	}
 
+	c.versions = nil
+	major := nextMajor + versionsLen - 1
 	for i := 0; i < versionsLen; i++ {
 		v, err := bs.ReadBits(&bitpos, 4)
 		if err != nil {
 			break
 		}
-		c.versions = append([]string{fmt.Sprintf("1.%d", major)}, c.versions...)
-		for minor := 1; minor <= v; minor++ {
-			c.versions = append([]string{fmt.Sprintf("1.%d.%d", major, minor)}, c.versions...)
+		for minor := v; minor > 0; minor-- {
+			c.versions = append(c.versions, fmt.Sprintf("1.%d.%d", major, minor))
 		}
-		major++
+		c.versions = append(c.versions, fmt.Sprintf("1.%d", major))
+		major--
 	}
 
 	c.versions = append(c.versions, memVersions...)
@@ -201,13 +248,40 @@ func (c *cli) loadFiles() error {
 	return nil
 }
 
-func (c *cli) readMods() error {
-	if c.mods != nil {
-		return errors.New("Mods already loaded")
+func (c *cli) loadProfile() error {
+	c.query.GameVersion = memVersions[0]
+	c.query.ModLoader = 0
+	if err := c.readMods(); err != nil {
+		return err
 	}
 
-	d, err := os.ReadFile("modlist")
+	cfg, err := storage.ReadOrCreate(c.profilePath("cfg"))
+	if err != nil || len(cfg) == 0 {
+		return nil
+	}
+
+	bs := bitstream.FromBuffer(cfg)
+	bitpos := 0
+
+	if err := readQuery(bs, &bitpos, &c.query.ModLoader, &c.query.GameVersion); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (c *cli) profilePath(path string) string {
+	return filepath.Join("profiles", c.profile, path)
+}
+
+func (c *cli) readMods() error {
+	d, err := storage.ReadOrCreate(c.profilePath("modlist"))
 	if err != nil {
+		return nil
+	}
+
+	if len(d) == 0 {
+		c.mods = nil
 		return nil
 	}
 
@@ -322,7 +396,7 @@ func (c *cli) saveMods() error {
 		bs.WriteBits64(m.Uploaded.Unix(), 64)
 	}
 
-	return bs.SaveToDisk("modlist")
+	return bs.SaveToDisk(c.profilePath("modlist"))
 }
 
 const RESET = "\x1b[0m"

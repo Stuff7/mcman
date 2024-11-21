@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
-	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -13,6 +12,7 @@ import (
 	"time"
 
 	"github.com/stuff7/mcman/slc"
+	"github.com/stuff7/mcman/storage"
 )
 
 type Cmd struct {
@@ -43,6 +43,8 @@ const (
 	CmdSet commandType = iota
 	CmdAdd
 	CmdRem
+	CmdModpack
+	CmdProfile
 	CmdImport
 	CmdExport
 	CmdClear
@@ -59,6 +61,8 @@ var commands = []command{
 	newCommand(CmdHelp, "Print this table", "help", "h"),
 	newCommand(CmdAdd, "Add a new mod", "add"),
 	newCommand(CmdRem, "Remove a mod", "remove", "rm", "rem", "del"),
+	newCommand(CmdModpack, "Add a modpack", "modpack"),
+	newCommand(CmdProfile, "Change profile", "profile"),
 	newCommand(CmdImport, "Import mods from json file { id: string }[]", "import"),
 	newCommand(CmdExport, "Export mods to json file", "export"),
 	newCommand(CmdClear, "Clear the terminal", "clear"),
@@ -98,6 +102,11 @@ func (c *cli) parseCmd(tokens []token) (Cmd, []token) {
 			case CmdRem:
 				parseKeywords = remCmdKwords
 				cmd.Run = c.remCmd
+			case CmdModpack:
+				cmd.Run = c.modpackCmd
+			case CmdProfile:
+				parseKeywords = profileCmdKwords
+				cmd.Run = c.profileCmd
 			case CmdImport:
 				cmd.Run = c.importCmd
 			case CmdExport:
@@ -180,7 +189,7 @@ func (c *cli) exportCmd(tokens []token) error {
 		return err
 	}
 
-	if err := os.WriteFile(out, data, 0666); err != nil {
+	if err := storage.WriteFile(out, data); err != nil {
 		return err
 	}
 
@@ -320,6 +329,89 @@ func (c *cli) downloadCmd(tokens []token) error {
 	return nil
 }
 
+func (c *cli) profileCmd(tokens []token) error {
+	if len(tokens) == 0 {
+		return errors.New("Usage: profile [name]")
+	}
+
+	i := 0
+	t := nextNonSpaceToken(tokens, &i)
+	oldProfile := c.profile
+	if t != nil && (t.typ == String || t.typ == Unknown || t.typ == Keyword) {
+		c.profile = t.parseString()
+	} else {
+		c.profile = "default"
+	}
+
+	if oldProfile != c.profile {
+		c.loadProfile()
+	}
+
+	return nil
+}
+
+func (c *cli) modpackCmd(tokens []token) error {
+	if len(tokens) == 0 {
+		return errors.New("Usage: modpack [modpack id] [directory]")
+	}
+	var i int
+	var id int
+	t := nextNonSpaceToken(tokens, &i)
+	if t != nil && t.typ == Number {
+		id = t.parseNumber()
+	}
+
+	var dir string
+	t = nextNonSpaceToken(tokens, &i)
+	if t != nil && (t.typ == String || t.typ == Unknown) {
+		dir = t.parseString()
+	} else {
+		dir = ""
+	}
+
+	mods, err := getModFiles(id, c.query)
+	if err != nil {
+		fmt.Printf("%s", err)
+		return err
+	}
+
+	m := slc.Get(mods.Files, 0)
+	if m == nil {
+		fmt.Printf("Modpack with ID %d not found", id)
+	}
+
+	filePath := filepath.Join(dir, "modpacks", url.QueryEscape(m.Name))
+	downloaded, err := downloadFile(*m.DownloadURL, filePath)
+	if err != nil {
+		fmt.Printf("%s%#+v %sdownload failed (Reason: %s)%s\n", BOLD, m.Name, clr(218), err, RESET)
+		time.Sleep(time.Second)
+	} else if !downloaded {
+		fmt.Printf("%s%#+v %salready exists%s\n", BOLD, m.Name, clr(45), RESET)
+	}
+	fmt.Println()
+
+	modpackDir := strings.TrimSuffix(filePath, filepath.Ext(filePath))
+	unzip(filePath, modpackDir)
+	fmt.Println()
+
+	data, err := storage.ReadFileContents(filepath.Join(modpackDir, "manifest.json"))
+	if err != nil {
+		return err
+	}
+
+	manifest, err := modpackManifestUnmarshal(data)
+	if err != nil {
+		return err
+	}
+
+	// TODO: Loop through manifest.Files and create a `modEntry` for each
+	if err := getModFile(slc.Get(manifest.Files, 10), c.query); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (c *cli) addCmd(tokens []token) error {
 	if len(tokens) == 0 {
 		return errors.New("Usage: add <option> [optionValue]\noptions:\n\tsearch <string>\n\tid <number>")
@@ -397,7 +489,7 @@ func (c *cli) versionCmd(tokens []token) error {
 		}
 
 		c.versions = append(newVersions, c.versions...)
-		if err := c.saveCfg(); err != nil {
+		if err := c.saveCache(); err != nil {
 			return err
 		}
 	}
@@ -502,7 +594,7 @@ func (c *cli) setQueryCmd(tokens []token) error {
 	}
 
 	fmt.Println("Query Updated:", c.query)
-	return c.saveCfg()
+	return c.saveProfile()
 }
 
 func (c *cli) debugCmd([]token) error {

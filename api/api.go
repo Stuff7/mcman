@@ -1,115 +1,15 @@
 package api
 
 import (
-	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"io"
-	"net/http"
-	"net/http/httputil"
 	"net/url"
-	"os"
 	"slices"
 	"strings"
 	"time"
 
 	"github.com/stuff7/mcman/slc"
 )
-
-var CF_KEY = os.Getenv("CURSEFORGE_KEY")
-var client = &http.Client{Transport: &cfTransport{}}
-
-const MINECRAFT_ID = 432
-
-type cfTransport struct{}
-
-func (t *cfTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	req.URL.Scheme = "https"
-	req.URL.Host = "api.curseforge.com"
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("x-api-key", CF_KEY)
-	return http.DefaultTransport.RoundTrip(req)
-}
-
-func dumpHttp(r *http.Response, errs ...error) error {
-	req, err := httputil.DumpRequest(r.Request, true)
-	res, err := httputil.DumpResponse(r, true)
-	errs = append(
-		errs,
-		err,
-		fmt.Errorf("\nREQUEST:\n%s\nRESPONSE:\n%s\n----------------\n", string(req), string(res)),
-	)
-	return errors.Join(errs...)
-}
-
-func dumpJson(body []byte, errs ...error) error {
-	var pretty bytes.Buffer
-
-	err := json.Indent(&pretty, body, "", "  ")
-	jsonErr := fmt.Errorf("\nJSON:\n%s\n----------------\n", string(pretty.Bytes()))
-	if len(errs) == 0 {
-		return jsonErr
-	}
-
-	errs = append(
-		errs,
-		err,
-		jsonErr,
-	)
-
-	return errors.Join(errs...)
-}
-
-func getJSON[T any](ret *T, url string) error {
-	res, err := client.Get(url)
-	if err != nil {
-		return dumpHttp(res, err)
-	}
-
-	if res.StatusCode != 200 {
-		return dumpHttp(res, errors.New("Bad Response"))
-	}
-
-	defer res.Body.Close()
-	body, err := io.ReadAll(res.Body)
-	if err != nil {
-		return dumpHttp(res, err)
-	}
-
-	var apiRes CfResponse[T]
-	if err := json.Unmarshal(body, &apiRes); err != nil {
-		return dumpHttp(res, dumpJson(body, err))
-	}
-
-	*ret = apiRes.Data
-	return nil
-}
-
-func downloadFile(url string, name string) (bool, error) {
-	if _, err := os.Stat(name); err == nil {
-		return false, nil
-	}
-
-	res, err := http.Get(url)
-	if err != nil {
-		return false, dumpHttp(res, err)
-	}
-	defer res.Body.Close()
-
-	file, err := os.Create(name)
-	if err != nil {
-		return true, err
-	}
-	defer file.Close()
-
-	_, err = io.Copy(file, res.Body)
-	if err != nil {
-		return true, err
-	}
-
-	return true, nil
-}
 
 const nextMajor int = 20
 
@@ -374,6 +274,38 @@ type importFile struct {
 
 type gameVersion struct {
 	Version string `json:"versionString"`
+}
+
+func modpackManifestUnmarshal(data []byte) (modpackManifest, error) {
+	var manifest modpackManifest
+	err := json.Unmarshal(data, &manifest)
+	return manifest, err
+}
+
+type modpackManifest struct {
+	Minecraft       modpackVersion `json:"minecraft"`
+	ManifestType    string         `json:"manifestType"`
+	ManifestVersion int64          `json:"manifestVersion"`
+	Name            string         `json:"name"`
+	Version         string         `json:"version"`
+	Author          string         `json:"author"`
+	Files           []modpackFile  `json:"files"`
+}
+
+type modpackFile struct {
+	ProjectID int64 `json:"projectID"`
+	FileID    int64 `json:"fileID"`
+	Required  bool  `json:"required"`
+}
+
+type modpackVersion struct {
+	Version    string             `json:"version"`
+	ModLoaders []modpackModLoader `json:"modLoaders"`
+}
+
+type modpackModLoader struct {
+	ID      string `json:"id"`
+	Primary bool   `json:"primary"`
 }
 
 type CfResponse[D any] struct {

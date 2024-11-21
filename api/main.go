@@ -4,24 +4,17 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"os"
 	"reflect"
 	"slices"
 	"strings"
 	"time"
 
 	"github.com/stuff7/mcman/slc"
+	"github.com/stuff7/mcman/storage"
 )
 
 func (c *cli) importMods(path string) error {
-	file, err := os.Open(path)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-
-	body, err := io.ReadAll(file)
+	body, err := storage.ReadFileContents(path)
 	if err != nil {
 		return err
 	}
@@ -145,6 +138,15 @@ func getModFiles(id int, query searchQuery) (ModFiles, error) {
 	}
 
 	return ret, nil
+}
+
+func getModFile(mod *modpackFile, query searchQuery) error {
+	ret := ModFiles{ID: int(mod.ProjectID), GameVersion: query.GameVersion, ModLoader: query.ModLoader}
+	if err := getJSON(&ret.Files, fmt.Sprintf("/v1/mods/%d/files/%d%s", mod.ProjectID, mod.FileID, query)); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func clr(id byte) string {
