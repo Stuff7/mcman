@@ -140,13 +140,13 @@ func getModFiles(id int, query searchQuery) (ModFiles, error) {
 	return ret, nil
 }
 
-func getModFile(mod *modpackFile, query searchQuery) error {
-	ret := ModFiles{ID: int(mod.ProjectID), GameVersion: query.GameVersion, ModLoader: query.ModLoader}
-	if err := getJSON(&ret.Files, fmt.Sprintf("/v1/mods/%d/files/%d%s", mod.ProjectID, mod.FileID, query)); err != nil {
-		return err
+func getModFile(mod *modpackFile, query searchQuery) (ModFile, error) {
+	ret := ModFile{ID: int(mod.ProjectID), GameVersion: query.GameVersion, ModLoader: query.ModLoader}
+	if err := getJSON(&ret.File, fmt.Sprintf("/v1/mods/%d/files/%d%s", mod.ProjectID, mod.FileID, query)); err != nil {
+		return ret, err
 	}
 
-	return nil
+	return ret, nil
 }
 
 func clr(id byte) string {

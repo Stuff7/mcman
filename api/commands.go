@@ -352,21 +352,13 @@ func (c *cli) profileCmd(tokens []token) error {
 
 func (c *cli) modpackCmd(tokens []token) error {
 	if len(tokens) == 0 {
-		return errors.New("Usage: modpack [modpack id] [directory]")
+		return errors.New("Usage: modpack [modpack id]")
 	}
 	var i int
 	var id int
 	t := nextNonSpaceToken(tokens, &i)
 	if t != nil && t.typ == Number {
 		id = t.parseNumber()
-	}
-
-	var dir string
-	t = nextNonSpaceToken(tokens, &i)
-	if t != nil && (t.typ == String || t.typ == Unknown) {
-		dir = t.parseString()
-	} else {
-		dir = ""
 	}
 
 	mods, err := getModFiles(id, c.query)
@@ -380,7 +372,7 @@ func (c *cli) modpackCmd(tokens []token) error {
 		fmt.Printf("Modpack with ID %d not found", id)
 	}
 
-	filePath := filepath.Join(dir, "modpacks", url.QueryEscape(m.Name))
+	filePath := filepath.Join(c.profilePath("modpacks"), url.QueryEscape(m.Name))
 	downloaded, err := downloadFile(*m.DownloadURL, filePath)
 	if err != nil {
 		fmt.Printf("%s%#+v %sdownload failed (Reason: %s)%s\n", BOLD, m.Name, clr(218), err, RESET)
@@ -391,7 +383,9 @@ func (c *cli) modpackCmd(tokens []token) error {
 	fmt.Println()
 
 	modpackDir := strings.TrimSuffix(filePath, filepath.Ext(filePath))
-	unzip(filePath, modpackDir)
+	if err := unzip(filePath, modpackDir); err != nil {
+		return err
+	}
 	fmt.Println()
 
 	data, err := storage.ReadFileContents(filepath.Join(modpackDir, "manifest.json"))
@@ -404,9 +398,15 @@ func (c *cli) modpackCmd(tokens []token) error {
 		return err
 	}
 
-	// TODO: Loop through manifest.Files and create a `modEntry` for each
-	if err := getModFile(slc.Get(manifest.Files, 10), c.query); err != nil {
-		return err
+	c.mods = nil
+	for i := 0; i < len(manifest.Files); i++ {
+		f := &manifest.Files[i]
+		mod, err := getModFile(f, c.query)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("Adding mod %#+v\n", mod.File.Name)
+		c.mods = append(c.mods, entryFromModFile(&mod))
 	}
 
 	return nil

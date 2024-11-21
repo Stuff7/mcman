@@ -139,6 +139,18 @@ type modEntry struct {
 	Uploaded    time.Time `json:"uploaded"`
 }
 
+func entryFromModFile(f *ModFile) modEntry {
+	return modEntry{
+		Id:          f.ID,
+		ModLoader:   f.ModLoader,
+		GameVersion: f.GameVersion,
+		Name:        f.File.Name,
+		DownloadUrl: tryGetURL(&f.File),
+		Deps:        slc.Map(f.File.Dependencies, func(d Dependency) int { return d.ModId }),
+		Uploaded:    f.File.Uploaded,
+	}
+}
+
 func appendModEntry(mods []modEntry, id int, query searchQuery, f *CfFile) []modEntry {
 	if !slices.ContainsFunc(mods, func(m modEntry) bool { return id == m.Id }) {
 		return append(mods, modEntry{
@@ -266,6 +278,13 @@ type ModFiles struct {
 	ModLoader   int
 	GameVersion string
 	Files       []CfFile
+}
+
+type ModFile struct {
+	ID          int
+	ModLoader   int
+	GameVersion string
+	File        CfFile
 }
 
 type importFile struct {

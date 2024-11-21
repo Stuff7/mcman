@@ -22,9 +22,9 @@ var client = &http.Client{Transport: &cfTransport{}}
 const MINECRAFT_ID = 432
 
 func unzip(src, dest string) error {
-	r, err := zip.OpenReader(src)
+	r, err := storage.OpenZip(src)
 	if err != nil {
-		return fmt.Errorf("failed to open zip file: %w", err)
+		return fmt.Errorf("failed to unzip from %#+v to %#+v: %w", src, dest, err)
 	}
 	defer r.Close()
 

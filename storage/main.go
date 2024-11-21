@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"archive/zip"
 	"fmt"
 	"io"
 	"io/fs"
@@ -16,6 +17,10 @@ var binDir = func() string {
 	}
 	return filepath.Dir(executablePath)
 }()
+
+func OpenZip(path string) (*zip.ReadCloser, error) {
+	return zip.OpenReader(filepath.Join(binDir, path))
+}
 
 func ReadFile(path string) ([]byte, error) {
 	return os.ReadFile(filepath.Join(binDir, path))
@@ -47,6 +52,10 @@ func WriteFile(path string, data []byte) error {
 }
 
 func Open(path string) (*os.File, error) {
+	if err := MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return nil, err
+	}
+
 	return os.Open(filepath.Join(binDir, path))
 }
 
@@ -63,6 +72,10 @@ func MkdirAll(path string, perm fs.FileMode) error {
 }
 
 func Stat(path string) (fs.FileInfo, error) {
+	if err := MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return nil, err
+	}
+
 	return os.Stat(filepath.Join(binDir, path))
 }
 
