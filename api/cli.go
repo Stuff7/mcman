@@ -321,7 +321,7 @@ func (c *cli) readMods() error {
 
 		m.Name, err = bs.ReadPascalString(&b)
 		if err != nil {
-			return err
+			return fmt.Errorf("Failed to read mod at index %d:\n%w\nMod: %#+v", len(c.mods), err, m)
 		}
 		m.DownloadUrl = fmt.Sprintf("%s%d/%d/%s", downloadURL, id1, id2, url.QueryEscape(m.Name))
 

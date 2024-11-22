@@ -67,11 +67,13 @@ func extractFile(file *zip.File, filePath string) error {
 	defer dest.Close()
 
 	progressReader := &ProgressReader{
-		Description: "Extracting",
-		Name:        file.Name,
-		Reader:      src,
-		Total:       file.FileInfo().Size(),
-		Progress:    0,
+		Reader: src,
+		Ui: ProgressBar{
+			Description: "Extracting",
+			Name:        file.Name,
+			Total:       file.FileInfo().Size(),
+			Progress:    0,
+		},
 	}
 
 	if _, err := io.Copy(dest, progressReader); err != nil {
@@ -108,11 +110,13 @@ func downloadFile(url string, name string) (bool, error) {
 	defer file.Close()
 
 	progressReader := &ProgressReader{
-		Description: "Downloading",
-		Name:        name,
-		Reader:      res.Body,
-		Total:       totalSize,
-		Progress:    0,
+		Reader: res.Body,
+		Ui: ProgressBar{
+			Description: "Downloading",
+			Name:        name,
+			Total:       totalSize,
+			Progress:    0,
+		},
 	}
 
 	_, err = io.Copy(file, progressReader)
@@ -187,28 +191,32 @@ func getJSON[T any](ret *T, url string) error {
 	return nil
 }
 
-type ProgressReader struct {
+type ProgressBar struct {
 	Description string
 	Name        string
-	Reader      io.Reader
 	Total       int64
 	Progress    int64
 }
 
-func (pr *ProgressReader) Read(p []byte) (int, error) {
-	n, err := pr.Reader.Read(p)
-	pr.Progress += int64(n)
-	pr.printProgress()
-	return n, err
-}
-
-func (pr *ProgressReader) printProgress() {
+func (pr *ProgressBar) printProgress() {
 	if pr.Total > 0 {
 		percent := float64(pr.Progress) / float64(pr.Total) * 100
 		fmt.Printf("\x1b[2K%s %3.2f%% %s%#+v%s\r", pr.Description, percent, BOLD, pr.Name, RESET)
 	} else {
 		fmt.Printf("\x1b[2K%s %d bytes\r", pr.Description, pr.Progress)
 	}
+}
+
+type ProgressReader struct {
+	Reader io.Reader
+	Ui     ProgressBar
+}
+
+func (pr *ProgressReader) Read(p []byte) (int, error) {
+	n, err := pr.Reader.Read(p)
+	pr.Ui.Progress += int64(n)
+	pr.Ui.printProgress()
+	return n, err
 }
 
 func pluralize(w string, n int) string {

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/stuff7/mcman/storage"
 )
@@ -143,6 +144,9 @@ func (bs *Bitstream) ReadPascalString(bitpos *int) (string, error) {
 	}
 
 	s := string(bs.buf[i : i+int(sLen)])
+	if !utf8.ValidString(s) {
+		return s, fmt.Errorf("Pascal string is not valid utf-8:\nValue: %#+v\tLen: %d\tBytepos: %d", s, sLen, i)
+	}
 	*bitpos += int(sLen)*8 + 8
 
 	return s, nil

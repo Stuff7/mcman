@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -343,11 +344,11 @@ func (c *cli) profileCmd(tokens []token) error {
 		c.profile = "default"
 	}
 
-	if oldProfile != c.profile {
-		c.loadProfile()
+	if oldProfile == c.profile {
+		return nil
 	}
 
-	return nil
+	return c.loadProfile()
 }
 
 func (c *cli) modpackCmd(tokens []token) error {
@@ -383,12 +384,15 @@ func (c *cli) modpackCmd(tokens []token) error {
 	fmt.Println()
 
 	modpackDir := strings.TrimSuffix(filePath, filepath.Ext(filePath))
-	if err := unzip(filePath, modpackDir); err != nil {
-		return err
+	manifestDir := filepath.Join(modpackDir, "manifest.json")
+	if _, err := storage.Stat(manifestDir); err != nil && os.IsNotExist(err) {
+		if err := unzip(filePath, modpackDir); err != nil {
+			return err
+		}
+		fmt.Println()
 	}
-	fmt.Println()
 
-	data, err := storage.ReadFileContents(filepath.Join(modpackDir, "manifest.json"))
+	data, err := storage.ReadFileContents(manifestDir)
 	if err != nil {
 		return err
 	}
@@ -399,17 +403,24 @@ func (c *cli) modpackCmd(tokens []token) error {
 	}
 
 	c.mods = nil
+	pr := ProgressBar{
+		Description: "Fetching mod",
+		Total:       int64(len(manifest.Files)),
+	}
 	for i := 0; i < len(manifest.Files); i++ {
 		f := &manifest.Files[i]
 		mod, err := getModFile(f, c.query)
 		if err != nil {
 			return err
 		}
-		fmt.Printf("Adding mod %#+v\n", mod.File.Name)
+		pr.Name = mod.File.Name
+		pr.Progress++
+		pr.printProgress()
 		c.mods = append(c.mods, entryFromModFile(&mod))
 	}
+	fmt.Println()
 
-	return nil
+	return c.saveMods()
 }
 
 func (c *cli) addCmd(tokens []token) error {

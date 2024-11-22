@@ -8,6 +8,6 @@ import (
 
 func main() {
 	if err := api.NewCli("> ").Run(); err != nil {
-		fmt.Printf("Error: %#+v\n", err)
+		fmt.Printf("Error: %s\n", err)
 	}
 }

@@ -146,8 +146,11 @@ func entryFromModFile(f *ModFile) modEntry {
 		GameVersion: f.GameVersion,
 		Name:        f.File.Name,
 		DownloadUrl: tryGetURL(&f.File),
-		Deps:        slc.Map(f.File.Dependencies, func(d Dependency) int { return d.ModId }),
 		Uploaded:    f.File.Uploaded,
+		Deps: slc.Map(
+			slc.Filter(f.File.Dependencies, func(d Dependency) bool { return d.Relation == RequiredDependency }),
+			func(d Dependency) int { return d.ModId },
+		),
 	}
 }
 
