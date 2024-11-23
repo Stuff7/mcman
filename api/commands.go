@@ -383,9 +383,15 @@ func (c *cli) modpackCmd(tokens []token) error {
 		return err
 	}
 
-	m := slc.Get(mods.Files, 0)
+	if c.dbg {
+		if d, err := json.Marshal(mods); err == nil {
+			storage.WriteFile(filepath.Join(c.profilePath("dbg"), "modpackResponse.json"), d)
+		}
+	}
+
+	m := slc.Find(mods.Files, func(f CfFile) bool { return f.Release == Release })
 	if m == nil {
-		fmt.Printf("Modpack with ID %d not found", id)
+		return fmt.Errorf("Modpack with ID %d not found", id)
 	}
 
 	filePath := filepath.Join(c.profilePath("downloads"), url.QueryEscape(m.Name))
