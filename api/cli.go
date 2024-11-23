@@ -14,13 +14,16 @@ import (
 )
 
 type cli struct {
-	profile  string
-	query    searchQuery
-	Running  bool
-	prompt   string
-	dbg      bool
-	versions []string
-	mods     []modEntry
+	profile     string
+	query       searchQuery
+	Running     bool
+	prompt      string
+	dbg         bool
+	versions    []string
+	mods        []modEntry
+	isCfModpack bool
+	modpackId   int
+	modpackName string
 }
 
 func NewCli(prompt string) *cli {
@@ -43,7 +46,7 @@ func (c *cli) Run() error {
 
 	for c.Running {
 		fmt.Printf(
-			"%s  %s%s  %s%d%s %s  %s%s%s %s%s%s\n",
+			"%s  %s%s  %s%d%s %s  %s%s%s %s%s%s  %sMODPACK#%s%d %s%s%s\n",
 			clr(225),
 			c.profile,
 			RESET,
@@ -56,6 +59,12 @@ func (c *cli) Run() error {
 			RESET,
 			clr(194),
 			c.query.GameVersion,
+			RESET,
+			BOLD,
+			clr(194),
+			c.modpackId,
+			clr(214),
+			c.modpackName,
 			RESET,
 		)
 
@@ -102,8 +111,12 @@ func saveQuery(bs *bitstream.Bitstream, modLoader int, gameVersion string) error
 	}
 	bs.WriteBits(major, 5)
 
-	minor, err := strconv.Atoi(gameVersion[idx+1:])
-	if err != nil {
+	if minor, err := func() (int, error) {
+		if idx >= len(gameVersion) {
+			return 0, nil
+		}
+		return strconv.Atoi(gameVersion[idx+1:])
+	}(); err != nil {
 		bs.WriteBits(0, 4)
 	} else {
 		bs.WriteBits(minor, 4)
@@ -203,6 +216,12 @@ func (c *cli) saveProfile() error {
 		return err
 	}
 
+	if c.isCfModpack {
+		bs.WriteBits(1, 1)
+		bs.WriteBits(c.modpackId, 24)
+		bs.WritePascalString(c.modpackName)
+	}
+
 	bs.SaveToDisk(c.profilePath("cfg"))
 
 	return nil
@@ -251,6 +270,10 @@ func (c *cli) loadCache() error {
 func (c *cli) loadProfile() error {
 	c.query.GameVersion = memVersions[0]
 	c.query.ModLoader = 0
+	c.mods = nil
+	c.isCfModpack = false
+	c.modpackId = -1
+	c.modpackName = ""
 	if err := c.readMods(); err != nil {
 		return err
 	}
@@ -266,6 +289,28 @@ func (c *cli) loadProfile() error {
 	if err := readQuery(bs, &bitpos, &c.query.ModLoader, &c.query.GameVersion); err != nil {
 		return err
 	}
+
+	isCfModpack, err := bs.ReadBits(&bitpos, 1)
+	if err != nil {
+		return err
+	}
+	c.isCfModpack = isCfModpack != 0
+
+	if !c.isCfModpack {
+		return nil
+	}
+
+	modpackId, err := bs.ReadBits(&bitpos, 24)
+	if err != nil {
+		return err
+	}
+	c.modpackId = modpackId
+
+	modpackName, err := bs.ReadPascalString(&bitpos)
+	if err != nil {
+		return err
+	}
+	c.modpackName = modpackName
 
 	return nil
 }

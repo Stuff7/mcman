@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strconv"
 
+	"github.com/stuff7/mcman/slc"
 	"github.com/stuff7/mcman/storage"
 )
 
@@ -83,7 +84,7 @@ func extractFile(file *zip.File, filePath string) error {
 	return nil
 }
 
-func downloadFile(url string, name string) (bool, error) {
+func downloadFile(url string, name string, desc ...string) (bool, error) {
 	if _, err := storage.Stat(name); err == nil {
 		return false, nil
 	}
@@ -117,6 +118,10 @@ func downloadFile(url string, name string) (bool, error) {
 			Total:       totalSize,
 			Progress:    0,
 		},
+	}
+
+	if d := slc.Get(desc, 0); d != nil {
+		progressReader.Ui.Description = *d
 	}
 
 	_, err = io.Copy(file, progressReader)

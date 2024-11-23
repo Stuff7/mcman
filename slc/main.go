@@ -1,6 +1,8 @@
 package slc
 
-import "strings"
+import (
+	"strings"
+)
 
 func Get[S any](slice []S, idx int) *S {
 	if idx < 0 || idx >= len(slice) {
@@ -25,6 +27,15 @@ func Filter[S any](s []S, f func(S) bool) []S {
 		}
 	}
 	return sf
+}
+
+func Find[S any](s []S, f func(S) bool) *S {
+	for _, s := range s {
+		if f(s) {
+			return &s
+		}
+	}
+	return nil
 }
 
 func Map[S, M any](ts []S, f func(S) M) []M {

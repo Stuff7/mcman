@@ -101,3 +101,7 @@ func DirChildren(dirPath string) ([]string, error) {
 	}
 	return names, nil
 }
+
+func RemoveAll(dir string) error {
+	return os.RemoveAll(filepath.Join(binDir, dir))
+}

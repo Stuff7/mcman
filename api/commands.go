@@ -61,7 +61,7 @@ const (
 var commands = []command{
 	newCommand(CmdHelp, "Print this table", "help", "h"),
 	newCommand(CmdAdd, "Add a new mod", "add"),
-	newCommand(CmdRem, "Remove a mod", "remove", "rm", "rem", "del"),
+	newCommand(CmdRem, "Remove a mod or a profile", "remove", "rm", "rem", "del"),
 	newCommand(CmdModpack, "Add a modpack", "modpack"),
 	newCommand(CmdProfile, "Change profile", "profile"),
 	newCommand(CmdImport, "Import mods from json file { id: string }[]", "import"),
@@ -113,6 +113,7 @@ func (c *cli) parseCmd(tokens []token) (Cmd, []token) {
 			case CmdExport:
 				cmd.Run = c.exportCmd
 			case CmdClear:
+				parseKeywords = clearCmdKwords
 				cmd.Run = c.clearCmd
 			case CmdDownload:
 				cmd.Run = c.downloadCmd
@@ -168,8 +169,17 @@ func findClosest(in string, aliases []string) *string {
 	return nil
 }
 
-func (c *cli) clearCmd([]token) error {
-	fmt.Printf("\x1b[2J\x1b[1;1H%s", LOGO)
+func (c *cli) clearCmd(tokens []token) error {
+	i := 0
+	t := nextNonSpaceToken(tokens, &i)
+	if t != nil && t.typ == Keyword {
+		dir := t.parseString()
+		storage.RemoveAll(c.profilePath(dir))
+		fmt.Printf("Removed %#+v directory\n", dir)
+	} else {
+		fmt.Printf("\x1b[2J\x1b[1;1H%s", LOGO)
+	}
+
 	return nil
 }
 
@@ -261,7 +271,7 @@ func (c *cli) listCmd(tokens []token) error {
 
 func (c *cli) remCmd(tokens []token) error {
 	if len(tokens) == 0 {
-		return errors.New("Usage: rem <option> [optionValue]\noptions:\n\tsearch <string>\n\tid <number>\n\tindex <number>")
+		return errors.New("Usage: rem <option> [optionValue]\noptions:\n\tprofile <string>\n\tsearch <string>\n\tid <number>\n\tindex <number>")
 	}
 
 	var prevT *token
@@ -274,6 +284,21 @@ func (c *cli) remCmd(tokens []token) error {
 
 		if prevT != nil && prevT.typ == Keyword {
 			switch prevT.val {
+			case "profile":
+				if t.typ != String && t.typ != Unknown {
+					return errors.New("Invalid search value. Expected a string")
+				}
+
+				prof := t.parseString()
+				storage.RemoveAll(filepath.Join("profiles", prof))
+				fmt.Printf("Removed profile %#+v\n", prof)
+
+				if prof == c.profile {
+					c.profile = "default"
+					c.loadProfile()
+				}
+
+				continue
 			case "search":
 				if t.typ != String {
 					return errors.New("Invalid search value. Expected a string")
@@ -301,31 +326,21 @@ func (c *cli) remCmd(tokens []token) error {
 	return nil
 }
 
-func (c *cli) downloadCmd(tokens []token) error {
-	if len(tokens) == 0 {
-		return errors.New("Usage: download [directory]")
-	}
-	var i int
-	var dir string
-	t := nextNonSpaceToken(tokens, &i)
-	if t != nil && t.typ == String {
-		dir = t.parseString()
-	}
-
-	var txt string
+func (c *cli) downloadCmd([]token) error {
+	fmt.Printf("%sDownloading %d %s%s\n", BOLD, len(c.mods), pluralize("mod", len(c.mods)), RESET)
 	for i, m := range c.mods {
-		downloaded, err := downloadFile(m.DownloadUrl, filepath.Join(dir, url.QueryEscape(m.Name)))
+		downloaded, err := downloadFile(
+			m.DownloadUrl,
+			filepath.Join(c.profilePath("mods"), url.QueryEscape(m.Name)),
+			fmt.Sprintf("[%s%03d%s / %s%03d%s] %s Downloading%s", clr(156), i+1, RESET, clr(156), len(c.mods), RESET, BOLD, RESET),
+		)
 		if err != nil {
-			txt = fmt.Sprintf("%sdownload failed\t%s", clr(218), err)
-			time.Sleep(time.Second)
-		} else if downloaded {
-			txt = clr(48) + "downloaded"
-			time.Sleep(time.Second)
-		} else {
-			txt = clr(45) + "already exists"
+			fmt.Printf("\n%s%s%s%s download failed\t%s", BOLD, m.Name, RESET, clr(218), err)
+		} else if !downloaded {
+			fmt.Printf("\n%s%s%s%s already exists\t%s", BOLD, m.Name, RESET, clr(218), err)
 		}
-		fmt.Printf("[%s%03d%s / %s%03d%s] %s%#+v %s\t%s\n", clr(156), i+1, RESET, clr(156), len(c.mods), RESET, BOLD, m.Name, txt, RESET)
 	}
+	fmt.Println()
 
 	return nil
 }
@@ -373,7 +388,7 @@ func (c *cli) modpackCmd(tokens []token) error {
 		fmt.Printf("Modpack with ID %d not found", id)
 	}
 
-	filePath := filepath.Join(c.profilePath("modpacks"), url.QueryEscape(m.Name))
+	filePath := filepath.Join(c.profilePath("downloads"), url.QueryEscape(m.Name))
 	downloaded, err := downloadFile(*m.DownloadURL, filePath)
 	if err != nil {
 		fmt.Printf("%s%#+v %sdownload failed (Reason: %s)%s\n", BOLD, m.Name, clr(218), err, RESET)
@@ -383,7 +398,16 @@ func (c *cli) modpackCmd(tokens []token) error {
 	}
 	fmt.Println()
 
-	modpackDir := strings.TrimSuffix(filePath, filepath.Ext(filePath))
+	modpackDir := c.profilePath("modpack")
+	if c.modpackId != mods.ID {
+		storage.RemoveAll(modpackDir)
+		storage.RemoveAll(c.profilePath("mods"))
+	}
+
+	c.isCfModpack = true
+	c.modpackId = mods.ID
+	c.modpackName = m.Name
+
 	manifestDir := filepath.Join(modpackDir, "manifest.json")
 	if _, err := storage.Stat(manifestDir); err != nil && os.IsNotExist(err) {
 		if err := unzip(filePath, modpackDir); err != nil {
@@ -402,6 +426,7 @@ func (c *cli) modpackCmd(tokens []token) error {
 		return err
 	}
 
+	fmt.Printf("%sFetching %d %s%s\n", BOLD, len(manifest.Files), pluralize("mod", len(c.mods)), RESET)
 	c.mods = nil
 	pr := ProgressBar{
 		Description: "Fetching mod",
@@ -419,6 +444,10 @@ func (c *cli) modpackCmd(tokens []token) error {
 		c.mods = append(c.mods, entryFromModFile(&mod))
 	}
 	fmt.Println()
+
+	if err := c.saveProfile(); err != nil {
+		return err
+	}
 
 	return c.saveMods()
 }

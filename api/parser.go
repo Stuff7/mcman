@@ -143,7 +143,7 @@ func remCmdKwords(tokens []token) []token {
 			break
 		}
 
-		t.autocomplete(Keyword, []string{"search", "id", "index"})
+		t.autocomplete(Keyword, []string{"search", "profile", "id", "index"})
 	}
 
 	return tokens
@@ -175,6 +175,20 @@ func addCmdKwords(tokens []token) []token {
 		}
 
 		t.autocomplete(Keyword, []string{"search", "id"})
+	}
+
+	return tokens
+}
+
+func clearCmdKwords(tokens []token) []token {
+	var i int
+	for {
+		t := nextNonSpaceToken(tokens, &i)
+		if t == nil || t.typ != Unknown {
+			break
+		}
+
+		t.autocomplete(Keyword, []string{"downloads", "mods", "modpack"})
 	}
 
 	return tokens
